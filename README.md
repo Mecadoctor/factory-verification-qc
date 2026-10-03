@@ -50,16 +50,28 @@ Le `start.sh` lance le worker (`worker.py`) en arrière-plan puis le serveur web
 |---|---|---|
 | `ACCESS_CODE` | `wenov` | Code d'accès de la page |
 | `FLASK_SECRET` | — | Clé de signature des sessions (**obligatoire en prod**) |
-| `FRAMEIO_TOKEN` | — | Token développeur Frame.io (**obligatoire**) |
+| `ADOBE_CLIENT_ID` | `0eeaa9bf…` | Client ID de l'app OAuth Adobe « Muse QC workflow » |
+| `ADOBE_CLIENT_SECRET` | — | Client secret Adobe (**obligatoire**, jamais commité) |
+| `ADOBE_REFRESH_TOKEN` | — | Refresh token (obtenu via `/oauth/login`, **obligatoire**) |
+| `FRAMEIO_TOKEN` | — | Token développeur legacy (repli, ne marche PAS sur la v4) |
 | `FRAMEIO_ACCOUNT_ID` | `4516c658-…` | Compte Frame.io |
 | `WHISPER_MODEL` | `small` | Modèle faster-whisper (`tiny`/`base`/`small`/`medium`) |
+| `OAUTH_REDIRECT_URI` | `https://factory-qc-4olu.onrender.com/oauth/callback` | Doit être déclarée dans l'app Adobe |
 | `PORT` | `5057` | Port d'écoute |
 
-## Obtenir un token Frame.io
+## Authentification Frame.io v4 (OAuth2 Adobe)
 
-1. Aller sur https://developer.frame.io/ et se connecter avec le compte Wenov.
-2. Créer un **Developer Token** avec les droits sur le compte.
-3. Le coller dans `FRAMEIO_TOKEN` (variable d'environnement Render ou `.env` local).
+La **v4 exige OAuth2** — les tokens développeurs `fio-u-...` ne fonctionnent pas dessus.
+Configuration en une fois :
+
+1. Dans [Adobe Developer Console](https://developer.adobe.com/console/) (projet « Muse QC workflow », credential OAuth Web App) :
+   ajouter aux Redirect URIs : `https://factory-qc-4olu.onrender.com/oauth/callback`
+2. Sur Render, renseigner `ADOBE_CLIENT_ID` et `ADOBE_CLIENT_SECRET`.
+3. Visiter (connecté avec le code d'accès) : `https://factory-qc-4olu.onrender.com/oauth/login`
+   → autoriser avec le compte Adobe lié à Frame.io.
+4. Copier le **refresh token** affiché dans `ADOBE_REFRESH_TOKEN` (Render → Environment).
+   Le worker rafraîchit ensuite les access tokens tout seul ; les commentaires
+   sont publiés sous l'identité du compte autorisé.
 
 ## Sécurité
 
