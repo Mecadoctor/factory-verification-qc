@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: factory-qc
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/session
+    envVars:
+      - key: ACCESS_CODE
+        sync: false
+      - key: FLASK_SECRET
+        generateValue: true
+      - key: FRAMEIO_TOKEN
+        sync: false
+      - key: FRAMEIO_ACCOUNT_ID
+        value: 4516c658-53a4-4a52-8b5a-d200803ed2d6
+      - key: WHISPER_MODEL
+        value: small
+    disk:
+      name: qc-data
+      mountPath: /app/work
+      sizeGB: 10

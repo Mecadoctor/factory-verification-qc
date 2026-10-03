@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factory de vérification — Lancer un contrôle</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 24px; }
+  /* --- Écran code d'accès --- */
+  #gate { position: fixed; inset: 0; background: #f5f5f7; z-index: 100;
+          display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #gate .gate-card { background: #fff; border-radius: 16px; padding: 40px 32px;
+                     box-shadow: 0 2px 12px rgba(0,0,0,.1); max-width: 360px; width: 100%;
+                     text-align: center; }
+  #gate h1 { font-size: 22px; margin-bottom: 8px; }
+  #gate p { color: #6e6e73; font-size: 14px; margin-bottom: 20px; }
+  #gate input { width: 100%; padding: 14px; font-size: 18px; text-align: center;
+                border: 2px solid #d2d2d7; border-radius: 10px; margin-bottom: 12px;
+                letter-spacing: 2px; }
+  #gate input:focus { outline: none; border-color: #0071e3; }
+  #gate button { width: 100%; padding: 14px; font-size: 16px; font-weight: 700;
+                 color: #fff; background: #0071e3; border: none; border-radius: 10px;
+                 cursor: pointer; }
+  #gate .erreur { color: #d32f2f; font-size: 14px; margin-top: 10px; display: none; }
+  #contenu { display: none; }
+  #contenu.visible { display: block; }
+  .container { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 6px; }
+  .subtitle { color: #6e6e73; margin-bottom: 24px; font-size: 14px; }
+  .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 16px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+  select, input[type=url] { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #d2d2d7; border-radius: 8px; margin-bottom: 20px; background: #fff; }
+  select:focus, input:focus { outline: none; border-color: #0071e3; }
+  .types { display: flex; gap: 12px; margin-bottom: 20px; }
+  .type-opt { flex: 1; border: 2px solid #d2d2d7; border-radius: 10px; padding: 16px 8px; text-align: center; cursor: pointer; font-weight: 600; font-size: 15px; transition: all .15s; }
+  .type-opt small { display: block; font-weight: 400; color: #6e6e73; font-size: 12px; margin-top: 4px; }
+  .type-opt.selected { border-color: #0071e3; background: #f0f7ff; }
+  button.lancer { width: 100%; padding: 16px; font-size: 18px; font-weight: 700; color: #fff; background: #0071e3; border: none; border-radius: 10px; cursor: pointer; }
+  button.lancer:hover { background: #0077ed; }
+  button.lancer:disabled { background: #a0a0a0; cursor: not-allowed; }
+  .note { background: #fff8e1; border-left: 4px solid #ffa000; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px; font-size: 14px; display: none; }
+  .status { display: none; margin-top: 16px; padding: 16px; border-radius: 8px; font-size: 14px; }
+  .status.attente { display: block; background: #e3f2fd; }
+  .status.termine { display: block; background: #e8f5e9; }
+  .status.erreur { display: block; background: #ffebee; }
+
+  h2 { font-size: 18px; margin: 24px 0 12px; }
+  .section-vide { color: #999; font-size: 14px; margin-bottom: 8px; }
+
+  /* --- Job actif : jauge de progression --- */
+  .job-actif { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .job-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
+  .job-head .client { font-weight: 700; font-size: 16px; }
+  .job-head .type { font-size: 13px; color: #6e6e73; }
+  .job-head .temps { font-size: 13px; color: #0071e3; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .jauge { height: 10px; background: #e8e8ed; border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+  .jauge-fill { height: 100%; background: linear-gradient(90deg, #0071e3, #42a5f5); border-radius: 6px; transition: width .8s ease; min-width: 2%; }
+  .job-phase { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #333; }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; background: #0071e3; flex-shrink: 0; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .5; } }
+  .job-files { font-size: 12px; color: #6e6e73; margin-top: 6px; }
+  .file-pos { font-size: 12px; color: #e65100; margin-top: 6px; font-weight: 600; }
+
+  /* --- Job terminé --- */
+  .job-termine { background: #fff; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .job-termine .ligne1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
+  .job-termine .ligne2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .badge.termine { background: #e8f5e9; color: #2e7d32; }
+  .badge.attente { background: #fff3e0; color: #e65100; }
+  .badge.cours { background: #e3f2fd; color: #1565c0; }
+  .btn-frame { display: inline-block; padding: 6px 14px; background: #f0f7ff; color: #0071e3; border: 1px solid #0071e3; border-radius: 20px; font-size: 13px; font-weight: 600; text-decoration: none; }
+  .btn-frame:hover { background: #0071e3; color: #fff; }
+  .btn-rapport { display: inline-block; padding: 6px 14px; background: #f5f5f7; color: #333; border: 1px solid #d2d2d7; border-radius: 20px; font-size: 13px; font-weight: 600; text-decoration: none; }
+  .btn-rapport:hover { background: #e8e8ed; }
+  .meta { font-size: 12px; color: #6e6e73; }
+</style>
+</head>
+<body>
+<!-- Code d'accès -->
+<div id="gate">
+  <div class="gate-card">
+    <h1>🔍 Factory de vérification</h1>
+    <p>Entrez le code d'accès pour continuer</p>
+    <input type="password" id="codeInput" placeholder="Code" autocomplete="off"
+           onkeydown="if(event.key==='Enter')verifierCode()">
+    <button onclick="verifierCode()">Entrer</button>
+    <div class="erreur" id="codeErreur">Code incorrect, réessayez.</div>
+  </div>
+</div>
+
+<div class="container" id="contenu">
+  <h1>🔍 Factory de vérification</h1>
+  <p class="subtitle">Contrôle qualité designs & vidéos — règles Drive + dossier client</p>
+
+  <div class="card">
+    <div class="note" id="noteDossier"></div>
+
+    <label for="client">Client</label>
+    <select id="client">
+      <option value="">— Choisir un client —</option>
+      {% for c in clients %}
+      <option value="{{ c.name }}">{{ c.name }}</option>
+      {% endfor %}
+      <option value="__autre__">Autre (nouveau client)</option>
+    </select>
+
+    <label for="url">Lien Frame.io</label>
+    <input type="url" id="url" placeholder="https://f.io/xxxxxx" autocomplete="off">
+
+    <label>Type de livrable</label>
+    <div class="types">
+      <div class="type-opt" data-type="design">🎨 Design<small>Visuel statique</small></div>
+      <div class="type-opt" data-type="video">🎬 Vidéo<small>Sous-titres + audio</small></div>
+      <div class="type-opt" data-type="motion">✨ Motion design<small>Animation + texte</small></div>
+    </div>
+
+    <button class="lancer" id="btnLancer" disabled>Lancer la vérification</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <h2>⚙️ En cours</h2>
+  <div id="jobsActifs"><p class="section-vide">Aucune vérification en cours.</p></div>
+
+  <h2>✅ Terminées</h2>
+  <div id="jobsTermines"><p class="section-vide">Aucune vérification terminée.</p></div>
+</div>
+
+<script>
+// --- Code d'accès (vérifié côté serveur) ---
+async function verifierCode() {
+  const saisie = document.getElementById('codeInput').value.trim();
+  const err = document.getElementById('codeErreur');
+  try {
+    const r = await fetch('/api/code', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: saisie})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      entrer();
+    } else {
+      err.style.display = 'block';
+      document.getElementById('codeInput').value = '';
+      document.getElementById('codeInput').focus();
+    }
+  } catch(e) {
+    err.textContent = 'Erreur de connexion au serveur.';
+    err.style.display = 'block';
+  }
+}
+function entrer() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('contenu').classList.add('visible');
+  chargerJobs();
+}
+// Si une session serveur existe déjà, entrer directement
+fetch('/api/session').then(r => r.json()).then(d => {
+  if (d.auth) entrer();
+}).catch(() => {});
+
+let typeChoisi = '';
+const typeOpts = document.querySelectorAll('.type-opt');
+typeOpts.forEach(el => {
+  el.addEventListener('click', () => {
+    typeOpts.forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    typeChoisi = el.dataset.type;
+    majBouton();
+  });
+});
+
+const clientSel = document.getElementById('client');
+const urlInput = document.getElementById('url');
+const btn = document.getElementById('btnLancer');
+const note = document.getElementById('noteDossier');
+const status = document.getElementById('status');
+
+const TYPE_ICON = { design: '🎨 Design', video: '🎬 Vidéo', motion: '✨ Motion design' };
+const PHASE_LABEL = {
+  attente: 'En file d\u2019attente…',
+  resolution: 'Analyse du lien Frame.io…',
+  telechargement: 'Téléchargement…',
+  transcription: 'Transcription audio…',
+  analyse: 'Analyse…',
+  traitement: 'Vérification en cours…',
+  publication: 'Écriture des commentaires…',
+  rapport: 'Finalisation du rapport…'
+};
+
+function majBouton() {
+  btn.disabled = !(clientSel.value && urlInput.value.trim() && typeChoisi);
+}
+
+clientSel.addEventListener('change', () => {
+  if (clientSel.value === '__autre__') {
+    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — vérification avec les règles générales uniquement.';
+    note.style.display = 'block';
+  } else {
+    note.style.display = 'none';
+  }
+  majBouton();
+});
+urlInput.addEventListener('input', majBouton);
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  status.className = 'status attente';
+  status.textContent = '⏳ Vérification lancée…';
+  try {
+    const r = await fetch('/api/lancer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({client: clientSel.value, frameio_url: urlInput.value.trim(), type: typeChoisi})
+    });
+    const d = await r.json();
+    if (r.status === 401) {
+      // Session expirée : redemander le code
+      document.getElementById('contenu').classList.remove('visible');
+      document.getElementById('gate').style.display = 'flex';
+      btn.disabled = false;
+      return;
+    }
+    if (d.ok) {
+      if (d.note_dossier) {
+        note.textContent = '⚠️ ' + d.note_dossier;
+        note.style.display = 'block';
+      }
+      status.textContent = `⏳ En file — durée estimée : ${d.estimation || '?'}`;
+      urlInput.value = '';
+      chargerJobs();
+      setTimeout(() => { status.className = 'status'; status.textContent = ''; btn.disabled = false; majBouton(); }, 4000);
+    } else {
+      status.className = 'status erreur';
+      status.textContent = '❌ ' + (d.erreur || 'Erreur inconnue.');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    status.className = 'status erreur';
+    status.textContent = '❌ Erreur de connexion au serveur.';
+    btn.disabled = false;
+  }
+});
+
+function echapper(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function carteActif(j) {
+  const pct = Math.min(100, Math.max(0, j.pourcent || 0));
+  let phaseTxt = PHASE_LABEL[j.phase] || j.phase || 'En cours…';
+  if (j.fichier_courant && ['traitement','telechargement','transcription','analyse'].includes(j.phase)) {
+    phaseTxt += ' ' + j.fichier_courant;
+  }
+  const enCours = j.statut === 'en_cours';
+  const filesTxt = (j.fichiers_total > 0)
+    ? `Fichiers : ${j.fichiers_faits}/${j.fichiers_total}`
+    : '';
+  const posTxt = (!enCours && j.position_file > 0)
+    ? `<div class="file-pos">⏳ Position ${j.position_file} dans la file</div>` : '';
+  const badge = enCours
+    ? '<span class="badge cours">en cours</span>'
+    : '<span class="badge attente">en attente</span>';
+  return `<div class="job-actif">
+    <div class="job-head">
+      <span><span class="client">${echapper(j.client)}</span> <span class="type">${TYPE_ICON[j.type] || j.type}</span></span>
+      <span class="temps">⏱ ${echapper(j.ecoule)} / ~${echapper(j.estimation)}</span>
+    </div>
+    <div class="jauge"><div class="jauge-fill" style="width:${pct}%"></div></div>
+    <div class="job-phase">${enCours ? '<span class="pulse"></span>' : ''}<span>${echapper(phaseTxt)}</span></div>
+    ${filesTxt ? `<div class="job-files">${echapper(filesTxt)}${j.restant ? ' — reste ~' + echapper(j.restant) : ''}</div>` : ''}
+    ${posTxt}
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">${badge}
+      <a class="btn-frame" href="${echapper(j.frameio_url)}" target="_blank" rel="noopener">🔗 Frame.io</a>
+    </div>
+  </div>`;
+}
+
+function carteTermine(j) {
+  return `<div class="job-termine">
+    <div class="ligne1">
+      <span><b>${echapper(j.client)}</b> <span class="meta">${TYPE_ICON[j.type] || j.type} — ${echapper(j.duree)}</span></span>
+      <span class="badge termine">terminé</span>
+    </div>
+    <div class="ligne2">
+      <span class="meta">💬 ${j.commentaires_publies} commentaire(s) — ${j.fichiers_traites} fichier(s)</span>
+      <a class="btn-frame" href="${echapper(j.frameio_url)}" target="_blank" rel="noopener">🔗 Frame.io</a>
+      ${j.rapport ? `<a class="btn-rapport" href="${echapper(j.rapport)}" target="_blank">📄 Rapport</a>` : ''}
+    </div>
+  </div>`;
+}
+
+async function chargerJobs() {
+  try {
+    const r = await fetch('/api/jobs');
+    const d = await r.json();
+    const divA = document.getElementById('jobsActifs');
+    const divT = document.getElementById('jobsTermines');
+    divA.innerHTML = (d.actifs && d.actifs.length)
+      ? d.actifs.map(carteActif).join('')
+      : '<p class="section-vide">Aucune vérification en cours.</p>';
+    divT.innerHTML = (d.termines && d.termines.length)
+      ? d.termines.map(carteTermine).join('')
+      : '<p class="section-vide">Aucune vérification terminée.</p>';
+  } catch(e) {}
+}
+chargerJobs();
+setInterval(chargerJobs, 5000);
+</script>
+</div><!-- /#contenu -->
+</body>
+</html>

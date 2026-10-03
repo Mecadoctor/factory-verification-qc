@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+venv/
+queue/*.json
+results/*
+!results/.gitkeep
+work/*
+!work/.gitkeep
+.DS_Store
