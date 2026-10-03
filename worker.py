@@ -79,8 +79,14 @@ def charge_job(job):
 
 # --- Frame.io ---
 def frameio_token():
-    """Token Frame.io : variable d'environnement FRAMEIO_TOKEN (prod),
-    ou credential local du runtime Muse (dev)."""
+    """Token Frame.io v4 : OAuth2 Adobe (prod, via refresh token),
+    ou FRAMEIO_TOKEN legacy (dev), ou credential local du runtime Muse."""
+    try:
+        sys.path.insert(0, str(BASE))
+        from adobe_auth import get_access_token
+        return get_access_token()
+    except Exception as e:
+        print(f"OAuth Adobe indisponible ({e}), repli legacy...", flush=True)
     tok = os.environ.get('FRAMEIO_TOKEN', '').strip()
     if tok:
         return tok
@@ -90,7 +96,7 @@ def frameio_token():
         entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
         return str(entry["surrogate"]).strip()
     except Exception:
-        raise RuntimeError("FRAMEIO_TOKEN manquant : définir la variable d'environnement.")
+        raise RuntimeError("Aucun token Frame.io : configurer ADOBE_REFRESH_TOKEN (prod) ou FRAMEIO_TOKEN.")
 
 ACCT = os.environ.get('FRAMEIO_ACCOUNT_ID', '4516c658-53a4-4a52-8b5a-d200803ed2d6')
 

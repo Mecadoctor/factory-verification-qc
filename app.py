@@ -6,15 +6,24 @@ Variables d'environnement :
   FLASK_SECRET  Clé de signature des sessions (à définir en prod !)
   PORT          Port d'écoute (défaut: 5057)
 """
-import json, os, uuid, time
+import json, os, uuid, time, secrets
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, Response, session
+from flask import Flask, render_template, request, jsonify, Response, session, redirect
 from functools import wraps
+from urllib.parse import quote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'dev-secret-a-changer-en-prod')
 ACCESS_CODE = os.environ.get('ACCESS_CODE', 'wenov')
+
+# --- OAuth2 Adobe (Frame.io v4) ---
+ADOBE_CLIENT_ID = os.environ.get('ADOBE_CLIENT_ID', '0eeaa9bf24224fefa381ce97784f7fb3')
+ADOBE_CLIENT_SECRET = os.environ.get('ADOBE_CLIENT_SECRET', '')
+OAUTH_REDIRECT_URI = os.environ.get(
+    'OAUTH_REDIRECT_URI',
+    'https://factory-qc-4olu.onrender.com/oauth/callback')
+OAUTH_SCOPE = 'AdobeID,openid,email,profile,offline_access,additional_info.roles'
 
 ESTIMATION_DEFAUT = {
     'design': {'par_fichier': 45, 'fixe': 20},
@@ -85,6 +94,58 @@ def check_session():
 def deconnexion():
     session.pop('qc_auth', None)
     return jsonify({'ok': True})
+
+@app.route('/oauth/login')
+def oauth_login():
+    """Lance l'autorisation Adobe (protégé par le code d'accès). À visiter une fois."""
+    if not session.get('qc_auth'):
+        return redirect('/')
+    state = secrets.token_urlsafe(16)
+    session['oauth_state'] = state
+    url = ('https://ims-na1.adobelogin.com/ims/authorize/v2'
+           f'?client_id={ADOBE_CLIENT_ID}'
+           f'&redirect_uri={quote(OAUTH_REDIRECT_URI, safe="")}'
+           f'&scope={quote(OAUTH_SCOPE, safe="")}'
+           f'&response_type=code&state={state}')
+    return redirect(url)
+
+@app.route('/oauth/callback')
+def oauth_callback():
+    """Échange le code contre les tokens. Affiche le refresh_token à copier dans Render."""
+    import urllib.request, urllib.error, urllib.parse
+    if request.args.get('state') != session.get('oauth_state'):
+        return 'État OAuth invalide, recommencez via /oauth/login.', 400
+    code = request.args.get('code')
+    if not code:
+        return f"Erreur Adobe : {request.args.get('error_description', request.args.get('error'))}", 400
+    data = urllib.parse.urlencode({
+        'grant_type': 'authorization_code',
+        'client_id': ADOBE_CLIENT_ID,
+        'client_secret': ADOBE_CLIENT_SECRET,
+        'code': code,
+        'redirect_uri': OAUTH_REDIRECT_URI,
+    }).encode()
+    req = urllib.request.Request('https://ims-na1.adobelogin.com/ims/token/v3',
+                                 data=data, method='POST',
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return f"Échange de code échoué (HTTP {e.code}).", 400
+    rt = resp.get('refresh_token', '')
+    if rt:
+        try:
+            open(os.path.join(BASE, 'adobe_refresh_token.txt'), 'w').write(rt)
+        except Exception:
+            pass
+    # Page simple affichant le refresh token à copier dans Render
+    return (f"""<html><body style="font-family:sans-serif;max-width:700px;margin:40px auto">
+        <h2>✅ Autorisation réussie</h2>
+        <p>Copiez ce <b>refresh token</b> dans Render → Environment → <b>ADOBE_REFRESH_TOKEN</b> :</p>
+        <textarea rows="4" style="width:100%" readonly>{rt}</textarea>
+        <p>Le worker l'utilisera pour obtenir des access tokens Frame.io v4.</p>
+        </body></html>""")
 
 @app.route('/api/lancer', methods=['POST'])
 @auth_requise
