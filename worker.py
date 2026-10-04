@@ -518,9 +518,28 @@ def charger_jobs_attente():
     out.sort(key=cle)
     return out
 
+def reprendre_jobs_abandonnes():
+    """Au démarrage : tout job resté 'en_cours' (worker mort en plein traitement)
+    repart en 'en_attente' au lieu de rester bloqué à jamais."""
+    recuperes = []
+    for jf in QUEUE.glob('*.json'):
+        try:
+            j = json.loads(jf.read_text())
+            if j.get('statut') == 'en_cours':
+                j['statut'] = 'en_attente'
+                j['reprise_apres_crash'] = True
+                jf.write_text(json.dumps(j, ensure_ascii=False, indent=2))
+                recuperes.append(j['id'])
+        except Exception:
+            pass
+    if recuperes:
+        print(f"Reprise après crash : {len(recuperes)} job(s) remis en attente : "
+              f"{', '.join(recuperes)}", flush=True)
+
 def main():
     RESULTS.mkdir(parents=True, exist_ok=True)
     (BASE / 'work').mkdir(parents=True, exist_ok=True)
+    reprendre_jobs_abandonnes()
     print(f"Worker QC démarré (lourd×{MAX_LOURD_PARALLELE}, léger×{MAX_LEGER_PARALLELE}).",
           flush=True)
     while True:
