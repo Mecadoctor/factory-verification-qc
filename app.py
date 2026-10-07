@@ -347,6 +347,18 @@ def rapport(job_id):
             return Response(f.read(), mimetype='text/markdown; charset=utf-8')
     return jsonify({'ok': False, 'erreur': 'Rapport introuvable.'}), 404
 
+@app.route('/api/rapports-drive')
+@auth_requise
+def rapports_drive():
+    """Rapports sauvegardés dans Google Drive (survit aux redémarrages)."""
+    try:
+        import sys
+        sys.path.insert(0, BASE)
+        from drive_store import lister_rapports
+        return jsonify({'ok': True, 'rapports': lister_rapports()})
+    except Exception:
+        return jsonify({'ok': True, 'rapports': []})
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5057))
     app.run(host='0.0.0.0', port=port)

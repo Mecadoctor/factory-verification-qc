@@ -128,6 +128,9 @@
 
   <h2>✅ Terminées</h2>
   <div id="jobsTermines"><p class="section-vide">Aucune vérification terminée.</p></div>
+
+  <h2>📁 Rapports sauvegardés (Drive)</h2>
+  <div id="rapportsDrive"><p class="section-vide">Chargement…</p></div>
 </div>
 
 <script>
@@ -325,6 +328,26 @@ async function chargerJobs() {
 }
 chargerJobs();
 setInterval(chargerJobs, 5000);
+
+async function chargerRapportsDrive() {
+  const div = document.getElementById('rapportsDrive');
+  try {
+    const r = await fetch('/api/rapports-drive');
+    const d = await r.json();
+    const reps = (d.rapports || []);
+    div.innerHTML = reps.length
+      ? reps.map(x => {
+          const dt = x.modifiedTime ? new Date(x.modifiedTime).toLocaleString('fr-CA', {dateStyle: 'short', timeStyle: 'short'}) : '';
+          const lien = x.webViewLink ? ` <a class="btn-frame" href="${echapper(x.webViewLink)}" target="_blank" rel="noopener">📄 Ouvrir</a>` : '';
+          return `<div class="job-termine"><div class="ligne1"><span><b>${echapper(x.name)}</b> <span class="meta">${echapper(dt)}</span></span></div><div class="ligne2">${lien}</div></div>`;
+        }).join('')
+      : '<p class="section-vide">Aucun rapport sauvegardé pour le moment.</p>';
+  } catch(e) {
+    div.innerHTML = '<p class="section-vide">Sauvegarde Drive indisponible pour le moment.</p>';
+  }
+}
+chargerRapportsDrive();
+setInterval(chargerRapportsDrive, 60000);
 </script>
 </div><!-- /#contenu -->
 </body>

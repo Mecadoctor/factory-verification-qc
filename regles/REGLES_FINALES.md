@@ -1,7 +1,7 @@
 # RÈGLES FINALES — Factory de Contrôle Qualité Wenov
 
 > **MIROIR LOCAL** — source de vérité : Drive (dossier Règles QC). Ne pas modifier ici ; modifier dans le Drive puis resynchroniser.
-**Version :** 2.2.1 | **Date :** 2026-10-07 | **Portée :** globale Wenov
+**Version :** 2.2.2 | **Date :** 2026-10-07 | **Portée :** globale Wenov
 
 Ce document est la **référence unique** des règles appliquées par l'agent de contrôle qualité.
 Il consolide : les règles linguistiques (LANG), les règles vidéo/sous-titres (SUB),
@@ -273,6 +273,10 @@ expliquer le problème et demander confirmation. Ne pas créer de nouvelle règl
 Conserver : tâche, client, version, lien Frame.io, date/heure,
 anomalies détectées, décision, temps estimé, statut final, historique des révisions.
 
+**Sauvegarde :** chaque rapport est copié automatiquement dans le dossier Drive
+« Factory QC — Rapports » à la fin du contrôle (le Drive survit aux redémarrages
+de la page). Le lien Drive du rapport est consigné dans le résultat.
+
 Format de décision interne :
 ```
 CLIENT : [nom] | TÂCHE : [nom] | VERSION : [n]
@@ -316,3 +320,4 @@ PROCHAINE ACTION : [Surveillance / Terminé / Intervention humaine]
 - v2.1.0 (2026-10-07) : SUB-005/SUB-010 — sous-titres en français/anglais impeccable même si l'audio a une faute (décision DG) ; LANG-007 — anglicismes corrigés aussi en sous-titrage ; priorité des sources sans « branding WenovTime » (Drive client = seule source branding)
 - v2.2.0 (2026-10-07) : §8bis — deux modes d'entrée (A : WenovTime avec brief = contrôle complet ; B : page HTML sans brief = contrôle restreint, dimensions non vérifiables marquées « non applicable ») ; verdicts §10 adaptés au mode
 - v2.2.1 (2026-10-07) : §8bis précisé — en mode B, les règles Drive client et le branding/visuels client s'appliquent dès qu'un client est identifié ; seul le brief reste toujours non applicable
+- v2.2.2 (2026-10-07) : §11 — chaque rapport est sauvegardé automatiquement dans le dossier Drive « Factory QC — Rapports » (le Drive survit aux redémarrages de la page)

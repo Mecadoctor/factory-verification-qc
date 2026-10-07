@@ -6,3 +6,5 @@ numpy==2.5.3
 rapidocr-onnxruntime==1.4.4
 opencv-python==5.0.0.93
 onnxruntime==1.30.0
+google-api-python-client>=2.100
+google-auth>=2.30

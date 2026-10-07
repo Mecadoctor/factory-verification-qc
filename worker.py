@@ -474,6 +474,19 @@ def traiter_job(job):
             lignes.append(f"- ℹ️ {fr['note']}")
     rapport_path.write_text('\n'.join(lignes), encoding='utf-8')
     resultat['rapport'] = f"/api/rapport/{jid}"
+    # --- Sauvegarde du rapport dans Google Drive (best-effort : ne fait
+    # jamais échouer le job ; le Drive survit aux redémarrages Render) ---
+    try:
+        sys.path.insert(0, str(BASE))
+        from drive_store import sauvegarder_rapport
+        nom_drive = (f"{datetime.now().strftime('%Y-%m-%d_%H-%M')}_"
+                     f"{re.sub(r'[^A-Za-z0-9_-]+', '_', job['client'])[:40]}_"
+                     f"{job['type']}_{jid}.md")
+        fid_drive, lien_drive = sauvegarder_rapport(rapport_path, nom_drive)
+        if fid_drive:
+            resultat['rapport_drive'] = lien_drive
+    except Exception as e:
+        print(f"[{jid}] sauvegarde Drive impossible : {e}", flush=True)
 
     duree = int(time.time() - debut)
     resultat['duree_sec'] = duree
