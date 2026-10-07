@@ -170,22 +170,24 @@ def lancer():
     clients = load_clients()
     dossier_trouve = None
     note_dossier = None
-    mode = 'avec_brief'
+    # La page HTML n'a jamais de brief : toujours le mode B des règles.
+    # Les règles Drive client + branding s'appliquent dès qu'un client est identifié.
+    mode = 'sans_brief'
     if client and client != '__autre__':
         match = next((c for c in clients if c['name'] == client), None)
         if match and match.get('id'):
             dossier_trouve = match['id']
         else:
-            note_dossier = 'Pas de dossier trouvé pour ce client.'
+            note_dossier = ('Pas de dossier trouvé pour ce client — règles client et branding : '
+                            'non applicables. Brief : non applicable (dépôt page HTML).')
     elif client == '__autre__':
-        note_dossier = 'Pas de dossier trouvé (nouveau client).'
-        mode = 'sans_brief'
+        note_dossier = ('Pas de dossier trouvé (nouveau client) — règles client et branding : '
+                        'non applicables. Brief : non applicable (dépôt page HTML).')
     else:
-        # Dépôt rapide : lien seul, sans client ni brief (mode B des règles)
+        # Dépôt rapide : lien seul, sans client ni brief
         client = 'Dépôt direct (sans client)'
-        mode = 'sans_brief'
-        note_dossier = ('Mode sans brief : contrôle technique + langue uniquement. '
-                        'Conformité au brief, règles client et branding client : non applicables.')
+        note_dossier = ('Mode sans brief : contrôle technique + langue + règles globales. '
+                        'Brief, règles client et branding client : non applicables.')
 
     job = {
         'id': uuid.uuid4().hex[:12],

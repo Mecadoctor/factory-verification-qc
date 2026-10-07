@@ -442,14 +442,18 @@ def traiter_job(job):
     maj_progression(jid, phase='rapport')
     rapport_path = RESULTS / f"{jid}-rapport.md"
     mode = job.get('mode', 'avec_brief')
+    dossier = job.get('dossier_drive')
     lignes = [f"# Rapport de vérification — {job['client']}",
               f"Date : {datetime.now().strftime('%Y-%m-%d %H:%M')}",
               f"Type : {job['type']} | Lien : {job['frameio_url']}",
-              f"Mode : {'A — avec brief (contrôle complet)' if mode == 'avec_brief' else 'B — sans brief (contrôle restreint)'}"]
+              f"Mode : {'A — avec brief (contrôle complet)' if mode == 'avec_brief' else 'B — sans brief (règles client appliquées si client identifié)'}"]
     if mode == 'sans_brief':
-        lignes.append("> ⚠️ Dimensions non vérifiables sans brief : conformité au brief, "
-                      "règles client spécifiques, branding client. "
-                      "Vérifié : contrôle technique, langue, règles globales Wenov.")
+        lignes.append("> ⚠️ Conformité au brief : non applicable (aucun brief fourni sur la page HTML).")
+        if dossier:
+            lignes.append("> ℹ️ Règles Drive client et branding/visuels : vérifiés (dossier client).")
+        else:
+            lignes.append("> ⚠️ Règles client et branding client : non applicables (aucun dossier client). "
+                          "Vérifié : contrôle technique, langue, règles globales Wenov.")
     if job.get('note_dossier'):
         lignes.append(f"> ⚠️ {job['note_dossier']}")
     lignes += [f"\n## Fichiers traités : {resultat['fichiers_traites']}",

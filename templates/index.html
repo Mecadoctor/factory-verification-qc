@@ -199,10 +199,10 @@ function majBouton() {
 
 clientSel.addEventListener('change', () => {
   if (clientSel.value === '__autre__') {
-    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — vérification avec les règles générales uniquement, sans brief.';
+    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — règles client et branding non applicables. Le brief ne sera pas vérifié (dépôt page HTML).';
     note.style.display = 'block';
   } else if (clientSel.value === '') {
-    note.textContent = 'ℹ️ Mode sans brief : contrôle technique + langue. La conformité au brief et au branding client ne sera pas vérifiable.';
+    note.textContent = 'ℹ️ Sans brief ici : seul le brief ne sera pas vérifié. Dès qu\u2019un client est choisi, son Drive, ses règles et ses visuels sont contrôlés normalement.';
     note.style.display = 'block';
   } else {
     note.style.display = 'none';

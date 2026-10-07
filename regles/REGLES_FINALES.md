@@ -1,7 +1,7 @@
 # RÈGLES FINALES — Factory de Contrôle Qualité Wenov
 
 > **MIROIR LOCAL** — source de vérité : Drive (dossier Règles QC). Ne pas modifier ici ; modifier dans le Drive puis resynchroniser.
-**Version :** 2.2.0 | **Date :** 2026-10-07 | **Portée :** globale Wenov
+**Version :** 2.2.1 | **Date :** 2026-10-07 | **Portée :** globale Wenov
 
 Ce document est la **référence unique** des règles appliquées par l'agent de contrôle qualité.
 Il consolide : les règles linguistiques (LANG), les règles vidéo/sous-titres (SUB),
@@ -186,19 +186,25 @@ Frame.io horodatés). Seul le **périmètre vérifiable** change, selon la prés
   technique (§5), branding client (§6), conformité au brief (§7).
 - Verdicts §10 applicables intégralement.
 
-### Mode B — Page HTML (SANS brief) : contrôle RESTREINT
+### Mode B — Page HTML (SANS brief) : contrôle sans brief, pas sans client
 
-Quelqu'un colle un lien Frame.io sans brief (client non identifié ou non sélectionné).
+Quelqu'un colle un lien Frame.io sur la page. Il n'y a jamais de brief sur cette
+entrée — mais **tout le reste s'applique** dès qu'un client est identifié.
 
-- **Dimensions VÉRIFIÉES** : contrôle technique (§5), langue (§3 LANG + §4 SUB —
+- **Toujours VÉRIFIÉS** : contrôle technique (§5), langue (§3 LANG + §4 SUB —
   dont SUB-005 : écrit impeccable même si l'audio est fautif), règles globales Wenov.
-- **Dimensions NON VÉRIFIABLES** — marquées explicitement
-  *« non applicable — aucun brief fourni »*, jamais supposées :
-  - conformité au brief (§7 entier) ;
-  - règles client spécifiques (sans client identifié) ;
-  - branding client (sans charte fournie : standards professionnels génériques
-    uniquement — un logo ou une couleur ne sont jamais « validés » par défaut).
-- Le rapport et la page affichent la **liste des dimensions non couvertes**.
+- **Si un client est identifié** (sélectionné sur la page) :
+  - **Règles Drive client : vérifiées** (dossier client consulté, comme en mode A) ;
+  - **Branding et visuels client : vérifiés** contre la charte et les assets du dossier client ;
+  - si le dossier client est introuvable : marquer « non applicable — dossier client
+    introuvable », jamais supposé.
+- **Si aucun client n'est identifié** : règles client et branding marqués
+  « non applicable — aucun client » (standards professionnels génériques uniquement —
+  un logo ou une couleur ne sont jamais « validés » par défaut).
+- **Conformité au brief (§7 entier) : TOUJOURS « non applicable — aucun brief fourni »**,
+  même avec client identifié. C'est la seule dimension qui disparaît en mode B.
+- Le rapport et la page affichent le **mode d'entrée** et la **liste des dimensions
+  non couvertes**.
 - Verdict : **VALIDÉ (périmètre restreint)** / RÉVISION / BLOQUÉ.
   « VALIDÉ (périmètre restreint) » signifie : rien d'anormal détecté sur les
   dimensions vérifiables — la conformité au brief reste à confirmer par un humain.
@@ -229,9 +235,9 @@ Quelqu'un colle un lien Frame.io sans brief (client non identifié ou non sélec
 ## 10. RÈGLES DE DÉCISION
 
 ### VALIDÉ (tous les critères)
-- [ ] Brief respecté intégralement *(mode A ; en mode B : « non applicable — signalé »)*
-- [ ] Règles client respectées *(mode A ; en mode B : « non applicable » si client non identifié)*
-- [ ] Charte graphique respectée *(mode A ; en mode B : standards génériques uniquement)*
+- [ ] Brief respecté intégralement *(mode A ; en mode B : toujours « non applicable — signalé »)*
+- [ ] Règles client respectées *(mode A : oui ; mode B : oui si client identifié, sinon « non applicable »)*
+- [ ] Charte graphique respectée *(mode A : oui ; mode B : oui si dossier client, sinon standards génériques uniquement)*
 - [ ] Assets corrects
 - [ ] Orthographe et grammaire parfaites
 - [ ] Contraintes techniques OK
@@ -309,3 +315,4 @@ PROCHAINE ACTION : [Surveillance / Terminé / Intervention humaine]
 - v1.0.0 (2026-10-01) : règles initiales LANG + SUB
 - v2.1.0 (2026-10-07) : SUB-005/SUB-010 — sous-titres en français/anglais impeccable même si l'audio a une faute (décision DG) ; LANG-007 — anglicismes corrigés aussi en sous-titrage ; priorité des sources sans « branding WenovTime » (Drive client = seule source branding)
 - v2.2.0 (2026-10-07) : §8bis — deux modes d'entrée (A : WenovTime avec brief = contrôle complet ; B : page HTML sans brief = contrôle restreint, dimensions non vérifiables marquées « non applicable ») ; verdicts §10 adaptés au mode
+- v2.2.1 (2026-10-07) : §8bis précisé — en mode B, les règles Drive client et le branding/visuels client s'appliquent dès qu'un client est identifié ; seul le brief reste toujours non applicable
