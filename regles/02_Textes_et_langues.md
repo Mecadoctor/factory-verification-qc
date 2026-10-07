@@ -1,5 +1,6 @@
 # Factorie — Textes et langues
 
+> **MIROIR LOCAL** — source de vérité : Drive (dossier Règles QC). Ne pas modifier ici ; modifier dans le Drive puis resynchroniser.
 Version : 1.0.0 | Date : 2026-10-01 | Portée : globale Wenov
 
 Source : consignes Wenov de cette conversation. Les dispositions opérationnelles sur les limites, conflits et analyses incomplètes explicitent le fonctionnement.
@@ -44,7 +45,7 @@ Vérifier signes, guillemets, parenthèses, apostrophes, espaces doubles, absent
 
 **Gravité par défaut :** MAJEUR | **Bloquant par défaut :** oui
 
-Dans les textes français créés par Wenov, aucun anglicisme sauf nom officiel, marque, produit ou terme explicitement autorisé. En sous-titrage fidèle, conserver un anglicisme réellement prononcé.
+Dans les textes français créés par Wenov, aucun anglicisme sauf nom officiel, marque, produit ou terme explicitement autorisé. En sous-titrage aussi : corriger l'anglicisme en français propre.
 
 ## LANG-008 — Termes techniques
 

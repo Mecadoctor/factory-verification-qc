@@ -75,6 +75,9 @@
   .btn-rapport { display: inline-block; padding: 6px 14px; background: #f5f5f7; color: #333; border: 1px solid #d2d2d7; border-radius: 20px; font-size: 13px; font-weight: 600; text-decoration: none; }
   .btn-rapport:hover { background: #e8e8ed; }
   .meta { font-size: 12px; color: #6e6e73; }
+  .com { font-size: 13px; padding: 8px 10px; background: #f9f9fb; border-radius: 8px; margin-bottom: 6px; }
+  .com-tc { font-weight: 700; color: #0071e3; font-variant-numeric: tabular-nums; }
+  .com-file { color: #6e6e73; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -92,14 +95,14 @@
 
 <div class="container" id="contenu">
   <h1>🔍 Factory de vérification</h1>
-  <p class="subtitle">Contrôle qualité designs & vidéos — règles Drive + dossier client</p>
+  <p class="subtitle">Contrôle qualité designs & vidéos — avec ou sans brief, règles Drive</p>
 
   <div class="card">
     <div class="note" id="noteDossier"></div>
 
-    <label for="client">Client</label>
+    <label for="client">Client <span style="font-weight:400;color:#6e6e73;">(optionnel)</span></label>
     <select id="client">
-      <option value="">— Choisir un client —</option>
+      <option value="">— Sans client : dépôt rapide (lien seul, sans brief) —</option>
       {% for c in clients %}
       <option value="{{ c.name }}">{{ c.name }}</option>
       {% endfor %}
@@ -191,12 +194,15 @@ const PHASE_LABEL = {
 };
 
 function majBouton() {
-  btn.disabled = !(clientSel.value && urlInput.value.trim() && typeChoisi);
+  btn.disabled = !(urlInput.value.trim() && typeChoisi);
 }
 
 clientSel.addEventListener('change', () => {
   if (clientSel.value === '__autre__') {
-    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — vérification avec les règles générales uniquement.';
+    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — vérification avec les règles générales uniquement, sans brief.';
+    note.style.display = 'block';
+  } else if (clientSel.value === '') {
+    note.textContent = 'ℹ️ Mode sans brief : contrôle technique + langue. La conformité au brief et au branding client ne sera pas vérifiable.';
     note.style.display = 'block';
   } else {
     note.style.display = 'none';
@@ -279,16 +285,27 @@ function carteActif(j) {
 }
 
 function carteTermine(j) {
+  const modeBadge = j.mode === 'sans_brief'
+    ? '<span class="badge attente">sans brief</span>'
+    : '<span class="badge cours">avec brief</span>';
+  const coms = (j.commentaires || []);
+  const blocComs = coms.length
+    ? `<a class="btn-rapport" href="#" onclick="var e=document.getElementById('coms-${j.id}');e.style.display=(e.style.display==='none'?'block':'none');return false;">💬 Voir les ${coms.length} commentaire(s)</a>
+       <div class="coms" id="coms-${j.id}" style="display:none;margin-top:10px;border-top:1px solid #eee;padding-top:10px;width:100%;">
+        ${coms.map(c => `<div class="com"><span class="com-tc">${echapper(c.tc)}</span> <span class="com-file">${echapper(c.fichier)}</span><br>${echapper(c.text)}</div>`).join('')}
+       </div>`
+    : '<span class="meta">Aucun commentaire — tout est clean ✓</span>';
   return `<div class="job-termine">
     <div class="ligne1">
       <span><b>${echapper(j.client)}</b> <span class="meta">${TYPE_ICON[j.type] || j.type} — ${echapper(j.duree)}</span></span>
-      <span class="badge termine">terminé</span>
+      <span><span class="badge termine">terminé</span> ${modeBadge}</span>
     </div>
     <div class="ligne2">
-      <span class="meta">💬 ${j.commentaires_publies} commentaire(s) — ${j.fichiers_traites} fichier(s)</span>
+      <span class="meta">💬 ${j.commentaires_publies} publié(s) — ${j.fichiers_traites} fichier(s)</span>
       <a class="btn-frame" href="${echapper(j.frameio_url)}" target="_blank" rel="noopener">🔗 Frame.io</a>
       ${j.rapport ? `<a class="btn-rapport" href="${echapper(j.rapport)}" target="_blank">📄 Rapport</a>` : ''}
     </div>
+    <div class="ligne2" style="margin-top:8px;">${blocComs}</div>
   </div>`;
 }
 

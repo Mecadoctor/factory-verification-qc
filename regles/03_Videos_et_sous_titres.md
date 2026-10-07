@@ -1,5 +1,6 @@
 # Factorie — Videos et sous titres
 
+> **MIROIR LOCAL** — source de vérité : Drive (dossier Règles QC). Ne pas modifier ici ; modifier dans le Drive puis resynchroniser.
 Version : 1.0.0 | Date : 2026-10-01 | Portée : globale Wenov
 
 Source : consignes Wenov de cette conversation. Les dispositions opérationnelles sur les limites, conflits et analyses incomplètes explicitent le fonctionnement.
@@ -28,11 +29,11 @@ Sur chaque capture analyser textes, sous-titres, logo, couleurs, polices, placem
 
 Transcrire les paroles avec repères temporels. L’audio sert ici à identifier les mots ; qualité, mixage, musique et niveau sonore sont hors périmètre de cette famille.
 
-## SUB-005 — Alignement mot par mot
+## SUB-005 — Écrit impeccable (FR/EN)
 
 **Gravité par défaut :** MAJEUR | **Bloquant par défaut :** oui
 
-Aligner les mots prononcés et affichés au bon segment temporel. Détecter omissions, ajouts, substitutions, ordre incorrect et erreurs d’écriture. Le sens similaire ne valide pas une reformulation.
+Le sous-titre doit être un français (ou un anglais) écrit impeccable : orthographe, grammaire, accords, typographie — **même si l'audio contient une faute**. Corriger les fautes de l'oral à l'écrit. Rester aligné sur le sens et le découpage temporel de l'audio ; seule la forme écrite est normalisée.
 
 ## SUB-006 — Contexte limité
 
@@ -58,11 +59,11 @@ Appliquer la règle client sur euh, répétitions et faux départs. Sans règle,
 
 Reconstruire le texte sur plusieurs lignes et les sous-titres successifs. Comparer les mots indépendamment des retours à la ligne.
 
-## SUB-010 — Ponctuation distincte
+## SUB-010 — Relecture du sous-titre comme texte écrit
 
 **Gravité par défaut :** MINEUR | **Bloquant par défaut :** non
 
-Analyser séparément fidélité verbale et forme écrite : un sous-titre fidèle peut contenir une faute d’orthographe.
+Relire le sous-titre comme un texte écrit autonome : accents, traits d'union, apostrophes typographiques, espaces insécables, ponctuation.
 
 ## SUB-011 — Évolution et doublons
 

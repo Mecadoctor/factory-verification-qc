@@ -147,6 +147,13 @@ def oauth_callback():
         <p>Le worker l'utilisera pour obtenir des access tokens Frame.io v4.</p>
         </body></html>""")
 
+def fmt_tc(sec):
+    try:
+        sec = int(sec or 0)
+        return f"{sec // 60:02d}:{sec % 60:02d}"
+    except Exception:
+        return "??:??"
+
 @app.route('/api/lancer', methods=['POST'])
 @auth_requise
 def lancer():
@@ -163,6 +170,7 @@ def lancer():
     clients = load_clients()
     dossier_trouve = None
     note_dossier = None
+    mode = 'avec_brief'
     if client and client != '__autre__':
         match = next((c for c in clients if c['name'] == client), None)
         if match and match.get('id'):
@@ -171,6 +179,13 @@ def lancer():
             note_dossier = 'Pas de dossier trouvé pour ce client.'
     elif client == '__autre__':
         note_dossier = 'Pas de dossier trouvé (nouveau client).'
+        mode = 'sans_brief'
+    else:
+        # Dépôt rapide : lien seul, sans client ni brief (mode B des règles)
+        client = 'Dépôt direct (sans client)'
+        mode = 'sans_brief'
+        note_dossier = ('Mode sans brief : contrôle technique + langue uniquement. '
+                        'Conformité au brief, règles client et branding client : non applicables.')
 
     job = {
         'id': uuid.uuid4().hex[:12],
@@ -178,6 +193,7 @@ def lancer():
         'client_id': client,
         'dossier_drive': dossier_trouve,
         'note_dossier': note_dossier,
+        'mode': mode,
         'frameio_url': frameio_url,
         'type': type_livrable,
         'charge': 'lourd' if type_livrable in ('video', 'motion') else 'leger',
@@ -294,15 +310,28 @@ def jobs():
                 r = json.load(f)
         except Exception:
             continue
+        # Commentaires publiés, à plat pour affichage direct dans la page
+        commentaires = []
+        for fich in r.get('fichiers', []):
+            for c in fich.get('commentaires', []):
+                sec = c.get('timestamp', 0) if isinstance(c, dict) else 0
+                txt = c.get('text', '') if isinstance(c, dict) else str(c)
+                commentaires.append({
+                    'fichier': fich.get('name', ''),
+                    'tc': fmt_tc(sec),
+                    'text': txt,
+                })
         termines.append({
             'id': r.get('job_id', fn[:-5]),
             'client': r.get('client', '?'),
             'type': r.get('type', '?'),
+            'mode': r.get('mode', 'avec_brief'),
             'frameio_url': r.get('frameio_url', ''),
             'termine_le': r.get('termine_le', ''),
             'duree': fmt_duree(r.get('duree_sec', 0)),
             'fichiers_traites': r.get('fichiers_traites', 0),
             'commentaires_publies': r.get('commentaires_publies', 0),
+            'commentaires': commentaires,
             'rapport': r.get('rapport', ''),
         })
 
