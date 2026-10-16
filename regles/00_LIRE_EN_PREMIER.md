@@ -1,35 +1,60 @@
-# Factorie — Installation dans Google Drive
+# Factory de vérification — LIRE EN PREMIER
 
-Créer un dossier FACTORIE, puis y placer ces fichiers selon le tableau.
+> **Source de vérité : ce dossier Drive.** Les copies locales (`~/workspace/qc-subs/regles/`) sont des miroirs de repli — ne pas les modifier ; modifier ici puis resynchroniser.
+**Version :** 3.0.0 | **Date :** 2026-10-16 | **Portée :** globale Wenov
 
-| Dossier Drive | Fichiers à déposer |
-|---|---|
-| FACTORIE/00_GOUVERNANCE | 00_LIRE_EN_PREMIER.md ; 01_Gouvernance_et_sources.md ; 10_Contrat_moteur.md |
-| FACTORIE/01_REGLES_GLOBALES | 02_Textes_et_langues.md ; 03_Videos_et_sous_titres.md ; 04_Identite_visuelle.md ; 05_Faits_et_coherence.md ; 06_Rapports_et_verdicts.md |
-| FACTORIE/02_MODELES | 07_Modele_regles_client.md ; 08_Modele_regles_campagne.md ; 09_Modele_rapport.md |
-| FACTORIE/03_EXPORT_MACHINE | 11_Regles_structurees.json ; 12_Manifest.json |
-| FACTORIE/CLIENTS/[CLIENT] | Copies complétées des modèles client et campagne ; charte ; logos ; polices ; sources ; assets ; exemples approuvés |
-| FACTORIE/ARCHIVES | Anciennes versions datées, non actives |
+## La factory v3 (depuis le 2026-10-16)
 
-## Organisation de chaque client
-Créer : 01_Regles_Client, 02_Charte_Graphique, 03_Logos, 04_Polices, 05_Assets, 06_Contenus_Approuves, 07_Campagnes. Renseigner l’identifiant du dossier client dans Factorie. Les modèles vierges ne sont jamais des règles actives.
+**Une seule page HTML, deux pipelines.** La personne qui dépose un contrôle choisit d'abord
+**🎨 DESIGN** ou **🎬 VIDÉO**, puis colle le lien Frame.io. Chaque pipeline applique son propre
+paquet de règles — parce qu'un visuel statique et une vidéo n'ont pas les mêmes spécificités.
 
-## Quelle version modifier ?
-Pour la V1, les fichiers Markdown (.md) sont les documents éditables de référence. Ils sont du texte simple lisible par un humain et un agent. Le JSON est leur export initial structuré, pas une deuxième base indépendante. Après modification : incrémenter la version, faire approuver par le responsable Wenov, régénérer JSON et manifest puis activer l’ensemble cohérent. En attendant cette régénération, le moteur doit lire les Markdown à jour ou bloquer un export obsolète. Ne jamais modifier séparément les deux versions.
+| Fichier | Contenu | Pipeline |
+|---|---|---|
+| `REGLES_COMMUNES.md` | Principes, priorité des sources, verdicts, commentaires Frame.io, traçabilité, dossiers clients, maintenance | DESIGN + VIDÉO |
+| `REGLES_DESIGN.md` | Textes et langue (LANG-001 à 010), identité visuelle, composition, lisibilité, format et zones sûres, qualité d'image, CTA | DESIGN |
+| `REGLES_VIDEO.md` | Transcription, sous-titres (SUB-001 à 012), textes à l'écran, contrôle technique audio/vidéo, fin sur CTA | VIDÉO |
+| `09_Modele_rapport.md` | Modèle du rapport de contrôle | DESIGN + VIDÉO |
 
-## Avant chaque analyse
-1. Confirmer client, campagne, langue, média, destination et version du fichier.
-2. Vérifier les versions actuelles des règles et références Drive. Un cache est permis uniquement si sa version reste actuelle.
-3. Charger toutes les règles applicables et les seuls assets pertinents ; ne pas parcourir les dossiers des autres clients.
-4. Enregistrer un paquet figé avec sources, versions et empreintes.
-5. Faire analyser le livrable par le moteur choisi.
-6. Valider le rapport, les preuves et la couverture. Retourner le verdict ; conserver le paquet et le rapport.
+## Dossiers clients (Drive)
 
-## V1 simple / évolution
-Au départ, un agent ayant réellement accès à Drive peut lire ces fichiers avant l’analyse. Le moteur doit charger les familles applicables en entier, pas quelques passages trouvés par similarité. Ensuite, Factorie peut synchroniser Drive vers une base structurée et assembler automatiquement les paquets. Ce téléchargement ne crée ni la connexion Drive ni cette synchronisation.
+Chaque client a son dossier Drive (renseigné dans `clients.json` de la page) :
+`01_Regles_Client` (règles spécifiques), `02_Charte_Graphique`, `03_Logos`, `04_Polices`,
+`05_Assets`, `06_Contenus_Approuves`, `07_Campagnes`.
+Dès qu'un client est sélectionné sur la page, ses règles, sa charte et ses visuels sont
+contrôlés **au même niveau d'exigence** que les règles globales. Sans client : ces dimensions
+sont marquées « non applicable », jamais supposées.
 
-## Responsabilités
-Wenov approuve les règles, exceptions et sources. Factorie sélectionne et historise. Le moteur analyse. L’équipe corrige et prend la décision de livraison. Aucun fichier ici ne contient une charte réelle BBL, FSO ou Jets : elles doivent être ajoutées depuis leurs dossiers officiels.
+## Ce qui a changé en v3
 
-## Points à retenir
-La cadence d’une capture par seconde demandée est conservée. Elle ne garantit pas la détection des éléments plus brefs qu’une seconde. Les contrôles exacts de police/couleur peuvent nécessiter les sources. Une analyse incomplète ou une incertitude essentielle bloque ; elle ne peut recevoir PASS.
+- **Fin de WenovTime** : la surveillance WenovTime est désactivée et son code archivé
+  (`archives/wenovtime_qc-20261016`). La page HTML est la seule entrée de la factory.
+- **Fin du mode « motion »** : deux choix uniquement, DESIGN ou VIDÉO
+  (un ancien dépôt « motion » est traité comme VIDÉO).
+- **Règles séparées par pipeline** : `REGLES_DESIGN.md` et `REGLES_VIDEO.md` remplacent
+  l'ancien fichier unique. Les anciens fichiers (v1/v2, dont `REGLES_FINALES.md`,
+  `02_Textes_et_langues.md`, `03_Videos_et_sous_titres.md`) sont conservés dans
+  `ARCHIVES_v2/` — ils ne sont plus actifs.
+- **Pas de brief sur la page** : la conformité au brief est toujours « non applicable ».
+  Tout le reste s'applique.
+
+## Standard de validation
+
+**Prêt à être livré au client. Zéro faute en français ET en anglais. Aucune erreur ne passe.**
+
+## Avant chaque analyse (rappel moteur)
+
+1. Confirmer pipeline (DESIGN ou VIDÉO), client, langue, média, destination, version du fichier.
+2. Charger `REGLES_COMMUNES.md` + le fichier du pipeline + les règles du dossier Drive client
+   (si client identifié). Charger les familles applicables en entier.
+3. En cas de contradiction entre sources : signaler et demander une validation humaine.
+   Ne jamais inventer, ne jamais choisir arbitrairement.
+4. Une analyse incomplète ou une incertitude essentielle bloque — elle ne peut recevoir VALIDÉ.
+
+## Maintenance
+
+1. Modifier la règle dans le Drive (jamais la copie locale).
+2. Incrémenter la version en tête du fichier.
+3. Faire valider par le responsable Wenov — **veto absolu du DG**, aucune règle ne change sans lui.
+4. Tester sur un cas réel avant activation générale.
+5. Resynchroniser les miroirs locaux.

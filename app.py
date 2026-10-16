@@ -1,34 +1,22 @@
 #!/usr/bin/env python3
-"""Serveur web — Page de lancement vérification QC (version déploiement).
-
-Variables d'environnement :
-  ACCESS_CODE   Code d'accès (défaut: wenov)
-  FLASK_SECRET  Clé de signature des sessions (à définir en prod !)
-  PORT          Port d'écoute (défaut: 5057)
-"""
-import json, os, uuid, time, secrets
+"""Serveur web — Page de lancement vérification QC."""
+import json, os, uuid, time
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, Response, session, redirect
-from functools import wraps
-from urllib.parse import quote
+from flask import Flask, render_template, request, jsonify, Response
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET', 'dev-secret-a-changer-en-prod')
-ACCESS_CODE = os.environ.get('ACCESS_CODE', 'wenov')
-
-# --- OAuth2 Adobe (Frame.io v4) ---
-ADOBE_CLIENT_ID = os.environ.get('ADOBE_CLIENT_ID', '0eeaa9bf24224fefa381ce97784f7fb3')
-ADOBE_CLIENT_SECRET = os.environ.get('ADOBE_CLIENT_SECRET', '')
-OAUTH_REDIRECT_URI = os.environ.get(
-    'OAUTH_REDIRECT_URI',
-    'https://factory-qc-4olu.onrender.com/oauth/callback')
-OAUTH_SCOPE = 'AdobeID,openid,email,profile,offline_access,additional_info.roles'
 
 ESTIMATION_DEFAUT = {
     'design': {'par_fichier': 45, 'fixe': 20},
     'video':  {'par_fichier': 240, 'fixe': 30},
-    'motion': {'par_fichier': 240, 'fixe': 30},
+}
+
+# Pipelines de la factory v3 : DESIGN ou VIDÉO. 'motion' (ancienne page) = VIDÉO.
+PIPELINES = ('design', 'video')
+REGLES_PAR_PIPELINE = {
+    'design': 'REGLES_COMMUNES + REGLES_DESIGN',
+    'video': 'REGLES_COMMUNES + REGLES_VIDEO',
 }
 
 def load_clients():
@@ -62,100 +50,12 @@ def fmt_duree(sec):
     h, m = divmod(m, 60)
     return f"{h}h{m:02d}"
 
-def auth_requise(f):
-    @wraps(f)
-    def deco(*a, **kw):
-        if not session.get('qc_auth'):
-            return jsonify({'ok': False, 'erreur': 'Non authentifié.'}), 401
-        return f(*a, **kw)
-    return deco
-
 @app.route('/')
 def index():
     clients = load_clients()
     return render_template('index.html', clients=clients)
 
-@app.route('/api/code', methods=['POST'])
-def verifier_code():
-    """Vérifie le code d'accès côté serveur et ouvre une session signée."""
-    data = request.get_json(force=True, silent=True) or {}
-    saisie = (data.get('code') or '').strip().lower()
-    if saisie and saisie == ACCESS_CODE.lower():
-        session['qc_auth'] = True
-        session.permanent = True
-        return jsonify({'ok': True})
-    return jsonify({'ok': False, 'erreur': 'Code incorrect.'}), 403
-
-@app.route('/api/session')
-def check_session():
-    return jsonify({'ok': True, 'auth': bool(session.get('qc_auth'))})
-
-@app.route('/api/deconnexion', methods=['POST'])
-def deconnexion():
-    session.pop('qc_auth', None)
-    return jsonify({'ok': True})
-
-@app.route('/oauth/login')
-def oauth_login():
-    """Lance l'autorisation Adobe (protégé par le code d'accès). À visiter une fois."""
-    if not session.get('qc_auth'):
-        return redirect('/')
-    state = secrets.token_urlsafe(16)
-    session['oauth_state'] = state
-    url = ('https://ims-na1.adobelogin.com/ims/authorize/v2'
-           f'?client_id={ADOBE_CLIENT_ID}'
-           f'&redirect_uri={quote(OAUTH_REDIRECT_URI, safe="")}'
-           f'&scope={quote(OAUTH_SCOPE, safe="")}'
-           f'&response_type=code&state={state}')
-    return redirect(url)
-
-@app.route('/oauth/callback')
-def oauth_callback():
-    """Échange le code contre les tokens. Affiche le refresh_token à copier dans Render."""
-    import urllib.request, urllib.error, urllib.parse
-    if request.args.get('state') != session.get('oauth_state'):
-        return 'État OAuth invalide, recommencez via /oauth/login.', 400
-    code = request.args.get('code')
-    if not code:
-        return f"Erreur Adobe : {request.args.get('error_description', request.args.get('error'))}", 400
-    data = urllib.parse.urlencode({
-        'grant_type': 'authorization_code',
-        'client_id': ADOBE_CLIENT_ID,
-        'client_secret': ADOBE_CLIENT_SECRET,
-        'code': code,
-        'redirect_uri': OAUTH_REDIRECT_URI,
-    }).encode()
-    req = urllib.request.Request('https://ims-na1.adobelogin.com/ims/token/v3',
-                                 data=data, method='POST',
-                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            resp = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        return f"Échange de code échoué (HTTP {e.code}).", 400
-    rt = resp.get('refresh_token', '')
-    if rt:
-        try:
-            open(os.path.join(BASE, 'adobe_refresh_token.txt'), 'w').write(rt)
-        except Exception:
-            pass
-    # Page simple affichant le refresh token à copier dans Render
-    return (f"""<html><body style="font-family:sans-serif;max-width:700px;margin:40px auto">
-        <h2>✅ Autorisation réussie</h2>
-        <p>Copiez ce <b>refresh token</b> dans Render → Environment → <b>ADOBE_REFRESH_TOKEN</b> :</p>
-        <textarea rows="4" style="width:100%" readonly>{rt}</textarea>
-        <p>Le worker l'utilisera pour obtenir des access tokens Frame.io v4.</p>
-        </body></html>""")
-
-def fmt_tc(sec):
-    try:
-        sec = int(sec or 0)
-        return f"{sec // 60:02d}:{sec % 60:02d}"
-    except Exception:
-        return "??:??"
-
 @app.route('/api/lancer', methods=['POST'])
-@auth_requise
 def lancer():
     data = request.get_json(force=True)
     client = data.get('client', '').strip()
@@ -164,14 +64,18 @@ def lancer():
 
     if not frameio_url:
         return jsonify({'ok': False, 'erreur': 'URL Frame.io manquante.'}), 400
-    if type_livrable not in ('design', 'video', 'motion'):
-        return jsonify({'ok': False, 'erreur': 'Type de livrable invalide.'}), 400
+    if type_livrable == 'motion':
+        type_livrable = 'video'  # compatibilité ancienne page : motion = vidéo
+    if type_livrable not in PIPELINES:
+        return jsonify({'ok': False, 'erreur': 'Pipeline invalide (design ou vidéo).'}), 400
+    regles_appliquees = REGLES_PAR_PIPELINE[type_livrable]
 
     clients = load_clients()
     dossier_trouve = None
     note_dossier = None
-    # La page HTML n'a jamais de brief : toujours le mode B des règles.
-    # Les règles Drive client + branding s'appliquent dès qu'un client est identifié.
+    # La page HTML n'a jamais de brief : la conformité au brief est toujours
+    # « non applicable ». Les règles Drive client + branding s'appliquent dès
+    # qu'un client est identifié.
     mode = 'sans_brief'
     if client and client != '__autre__':
         match = next((c for c in clients if c['name'] == client), None)
@@ -179,15 +83,15 @@ def lancer():
             dossier_trouve = match['id']
         else:
             note_dossier = ('Pas de dossier trouvé pour ce client — règles client et branding : '
-                            'non applicables. Brief : non applicable (dépôt page HTML).')
+                            'non applicables. Règles globales du pipeline : appliquées.')
     elif client == '__autre__':
         note_dossier = ('Pas de dossier trouvé (nouveau client) — règles client et branding : '
-                        'non applicables. Brief : non applicable (dépôt page HTML).')
+                        'non applicables. Règles globales du pipeline : appliquées.')
     else:
-        # Dépôt rapide : lien seul, sans client ni brief
+        # Dépôt rapide : lien seul, sans client
         client = 'Dépôt direct (sans client)'
-        note_dossier = ('Mode sans brief : contrôle technique + langue + règles globales. '
-                        'Brief, règles client et branding client : non applicables.')
+        note_dossier = ('Dépôt rapide : règles globales du pipeline uniquement. '
+                        'Règles client et branding client : non applicables.')
 
     job = {
         'id': uuid.uuid4().hex[:12],
@@ -198,7 +102,8 @@ def lancer():
         'mode': mode,
         'frameio_url': frameio_url,
         'type': type_livrable,
-        'charge': 'lourd' if type_livrable in ('video', 'motion') else 'leger',
+        'regles_appliquees': regles_appliquees,
+        'charge': 'lourd' if type_livrable == 'video' else 'leger',
         'statut': 'en_attente',
         'cree_le': datetime.now().isoformat(),
         'estimation_sec': estimer_duree(type_livrable),
@@ -227,6 +132,7 @@ def statut(job_id):
     if os.path.exists(qpath):
         job = lire_job(qpath)
         prog = job.get('progression', {})
+        # Temps écoulé
         ecoule = 0
         try:
             debut = job.get('debut') or job.get('cree_le')
@@ -251,12 +157,20 @@ def statut(job_id):
         })
     return jsonify({'ok': False, 'erreur': 'Job introuvable.'}), 404
 
+def fmt_tc(sec):
+    try:
+        sec = int(sec or 0)
+        return f"{sec // 60:02d}:{sec % 60:02d}"
+    except Exception:
+        return "??:??"
+
 @app.route('/api/jobs')
 def jobs():
     actifs, termines = [], []
     qdir = os.path.join(BASE, 'queue')
     rdir = os.path.join(BASE, 'results')
 
+    # Position dans la file pour les jobs en attente
     attente_tries = []
     for fn in os.listdir(qdir):
         if fn.endswith('.json'):
@@ -278,7 +192,7 @@ def jobs():
             continue
         rid = fn[:-5]
         if os.path.exists(os.path.join(rdir, f'{rid}.json')):
-            continue
+            continue  # déjà dans les résultats
         prog = j.get('progression', {})
         ecoule = 0
         try:
@@ -348,7 +262,6 @@ def rapport(job_id):
     return jsonify({'ok': False, 'erreur': 'Rapport introuvable.'}), 404
 
 @app.route('/api/rapports-drive')
-@auth_requise
 def rapports_drive():
     """Rapports sauvegardés dans Google Drive (survit aux redémarrages)."""
     try:
@@ -360,5 +273,4 @@ def rapports_drive():
         return jsonify({'ok': True, 'rapports': []})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5057))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5057)

@@ -20,9 +20,12 @@ from pathlib import Path
 BASE = Path(__file__).parent
 QUEUE = BASE / 'queue'
 RESULTS = BASE / 'results'
-REGLES = BASE / 'regles'
-# Modèle Whisper : nom faster-whisper (téléchargé si absent) ou chemin local
-WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')
+QC = Path.home() / 'workspace' / 'qc-subs'
+# Dossier des règles : ~/workspace/qc-subs/regles en local, repli sur
+# <dossier_du_worker>/regles (déploiement Render).
+REGLES = QC / 'regles'
+if not REGLES.is_dir():
+    REGLES = BASE / 'regles'
 STATS_PATH = BASE / 'stats.json'
 
 # --- Configuration d'ordonnancement ---
@@ -75,30 +78,16 @@ def estimer_duree(type_job, nb_fichiers=2):
     return int(fixe + par_fichier * nb_fichiers)
 
 def charge_job(job):
-    return 'lourd' if job.get('type') in ('video', 'motion') else 'leger'
+    return 'lourd' if normaliser_pipeline(job.get('type')) == 'video' else 'leger'
 
 # --- Frame.io ---
 def frameio_token():
-    """Token Frame.io v4 : OAuth2 Adobe (prod, via refresh token),
-    ou FRAMEIO_TOKEN legacy (dev), ou credential local du runtime Muse."""
-    try:
-        sys.path.insert(0, str(BASE))
-        from adobe_auth import get_access_token
-        return get_access_token()
-    except Exception as e:
-        print(f"OAuth Adobe indisponible ({e}), repli legacy...", flush=True)
-    tok = os.environ.get('FRAMEIO_TOKEN', '').strip()
-    if tok:
-        return tok
-    try:
-        sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
-        from dynamic_credentials import dynamic_credential_entry
-        entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
-        return str(entry["surrogate"]).strip()
-    except Exception:
-        raise RuntimeError("Aucun token Frame.io : configurer ADOBE_REFRESH_TOKEN (prod) ou FRAMEIO_TOKEN.")
+    sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
+    from dynamic_credentials import dynamic_credential_entry
+    entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
+    return str(entry["surrogate"]).strip()
 
-ACCT = os.environ.get('FRAMEIO_ACCOUNT_ID', '4516c658-53a4-4a52-8b5a-d200803ed2d6')
+ACCT = "4516c658-53a4-4a52-8b5a-d200803ed2d6"
 
 def api(method, path, data=None):
     import urllib.request, urllib.error
@@ -219,14 +208,29 @@ def post_comment(file_id, seconds, text, fps=30):
                      {"data": {"text": text, "timestamp": ts}})
     return code in (200, 201)
 
-# --- Règles Drive ---
-def lire_regles():
+# --- Règles (factory v3 : un paquet par pipeline) ---
+# DESIGN -> REGLES_COMMUNES + REGLES_DESIGN
+# VIDÉO  -> REGLES_COMMUNES + REGLES_VIDEO
+# 'motion' (anciens jobs) est traité comme 'video'.
+REGLES_PAR_PIPELINE = {
+    'design': ['00_LIRE_EN_PREMIER.md', 'REGLES_COMMUNES.md', 'REGLES_DESIGN.md'],
+    'video': ['00_LIRE_EN_PREMIER.md', 'REGLES_COMMUNES.md', 'REGLES_VIDEO.md'],
+}
+
+def normaliser_pipeline(type_job):
+    return 'video' if type_job == 'motion' else type_job
+
+def lire_regles(pipeline):
+    """Charge le paquet de règles du pipeline (miroirs locaux du Drive)."""
+    pipeline = normaliser_pipeline(pipeline)
+    fichiers = REGLES_PAR_PIPELINE.get(pipeline, REGLES_PAR_PIPELINE['video'])
     regles = {}
-    for fn in sorted(REGLES.glob('*.md')):
+    for fn in fichiers:
+        p = REGLES / fn
         try:
-            regles[fn.stem] = fn.read_text()
-        except Exception:
-            pass
+            regles[fn] = p.read_text()
+        except Exception as e:
+            regles[fn] = f"[ERREUR LECTURE: {e}]"
     return regles
 
 # --- Transcription ---
@@ -234,11 +238,11 @@ def transcrire(video_path, wav_path):
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(video_path),
                     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
                     str(wav_path)], check=True, timeout=300)
-    venv_py = sys.executable
+    venv_py = QC / 'venv' / 'bin' / 'python'
     script = f"""
 import json, numpy as np, soundfile as sf
 from faster_whisper import WhisperModel
-model = WhisperModel(WHISPER_MODEL, device='cpu', compute_type='int8')
+model = WhisperModel('{QC}/models/fw-small', device='cpu', compute_type='int8')
 audio, sr = sf.read('{wav_path}')
 segments, info = model.transcribe(audio, language='fr', beam_size=5)
 segs = [{{'start': s.start, 'end': s.end, 'text': s.text.strip()}} for s in segments]
@@ -312,7 +316,7 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
     local = workdir / f"{fid}{ext}"
     subprocess.run(['curl', '-sL', '-o', str(local), hq_url], timeout=600)
 
-    if ftype in ('video', 'motion'):
+    if ftype == 'video':
         etape('transcription')
         wav = workdir / f"{fid}.wav"
         try:
@@ -356,6 +360,8 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
 def traiter_job(job):
     jid = job['id']
     debut = time.time()
+    # Normaliser l'ancien type 'motion' -> 'video' (factory v3 : 2 pipelines)
+    job['type'] = normaliser_pipeline(job.get('type', 'video'))
     print(f"[{jid}] {job['client']} | {job['type']} | {job['frameio_url']}", flush=True)
 
     job['statut'] = 'en_cours'
@@ -368,7 +374,7 @@ def traiter_job(job):
     (QUEUE / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False, indent=2))
 
     regles = lire_regles()
-    workdir = BASE / 'work' / jid
+    workdir = QC / 'web' / 'work' / jid
     workdir.mkdir(parents=True, exist_ok=True)
 
     # Résoudre le lien Frame.io -> les assets réellement partagés
@@ -388,6 +394,12 @@ def traiter_job(job):
             uniq.append(f)
     files = uniq
 
+    # Résolution vide = échec, jamais un faux "terminé" (cf. job BBL 2026-10-03)
+    if not files:
+        raise RuntimeError(
+            "Lien Frame.io inaccessible ou partage vide : 0 asset résolu "
+            f"({job['frameio_url']})")
+
     # Affiner l'estimation avec le vrai nombre de fichiers
     if files:
         maj_progression(jid, fichiers_total=len(files),
@@ -397,7 +409,9 @@ def traiter_job(job):
         'job_id': jid,
         'client': job['client'],
         'type': job['type'],
-        'mode': job.get('mode', 'avec_brief'),
+        'pipeline': 'DESIGN' if job['type'] == 'design' else 'VIDÉO',
+        'regles_appliquees': list(regles.keys()),
+        'mode': job.get('mode', 'sans_brief'),
         'frameio_url': job['frameio_url'],
         'note_dossier': job.get('note_dossier'),
         'fichiers_traites': 0,
@@ -441,21 +455,17 @@ def traiter_job(job):
     # Rapport
     maj_progression(jid, phase='rapport')
     rapport_path = RESULTS / f"{jid}-rapport.md"
-    mode = job.get('mode', 'avec_brief')
     dossier = job.get('dossier_drive')
     lignes = [f"# Rapport de vérification — {job['client']}",
               f"Date : {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-              f"Type : {job['type']} | Lien : {job['frameio_url']}",
-              f"Mode : {'A — avec brief (contrôle complet)' if mode == 'avec_brief' else 'B — sans brief (règles client appliquées si client identifié)'}"]
-    if mode == 'sans_brief':
-        lignes.append("> ⚠️ Conformité au brief : non applicable (aucun brief fourni sur la page HTML).")
-        if dossier:
-            lignes.append("> ℹ️ Règles Drive client et branding/visuels : vérifiés (dossier client).")
-        else:
-            lignes.append("> ⚠️ Règles client et branding client : non applicables (aucun dossier client). "
-                          "Vérifié : contrôle technique, langue, règles globales Wenov.")
-    if job.get('note_dossier'):
-        lignes.append(f"> ⚠️ {job['note_dossier']}")
+              f"Pipeline : {'DESIGN 🎨' if job['type'] == 'design' else 'VIDÉO 🎬'} | Lien : {job['frameio_url']}",
+              f"Règles appliquées : {', '.join(regles.keys())}",
+              f"Conformité au brief : non applicable — aucun brief fourni sur la page."]
+    if dossier:
+        lignes.append("> ℹ️ Règles Drive client et branding/visuels : vérifiés (dossier client).")
+    else:
+        lignes.append("> ⚠️ Règles client et branding client : non applicables (aucun dossier client). "
+                      "Vérifié : règles globales du pipeline.")
     lignes += [f"\n## Fichiers traités : {resultat['fichiers_traites']}",
                f"## Commentaires publiés : {resultat['commentaires_publies']}\n"]
     for fr in resultat['fichiers']:
@@ -562,7 +572,7 @@ def reprendre_jobs_abandonnes():
 
 def main():
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (BASE / 'work').mkdir(parents=True, exist_ok=True)
+    (QC / 'web' / 'work').mkdir(parents=True, exist_ok=True)
     reprendre_jobs_abandonnes()
     print(f"Worker QC démarré (lourd×{MAX_LOURD_PARALLELE}, léger×{MAX_LEGER_PARALLELE}).",
           flush=True)

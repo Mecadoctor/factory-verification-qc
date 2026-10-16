@@ -32,10 +32,29 @@
   label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
   select, input[type=url] { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #d2d2d7; border-radius: 8px; margin-bottom: 20px; background: #fff; }
   select:focus, input:focus { outline: none; border-color: #0071e3; }
-  .types { display: flex; gap: 12px; margin-bottom: 20px; }
-  .type-opt { flex: 1; border: 2px solid #d2d2d7; border-radius: 10px; padding: 16px 8px; text-align: center; cursor: pointer; font-weight: 600; font-size: 15px; transition: all .15s; }
-  .type-opt small { display: block; font-weight: 400; color: #6e6e73; font-size: 12px; margin-top: 4px; }
-  .type-opt.selected { border-color: #0071e3; background: #f0f7ff; }
+
+  /* --- Étape 1 : choix du pipeline --- */
+  .choix { display: flex; gap: 16px; }
+  .choix-btn { flex: 1; border: 2px solid #d2d2d7; border-radius: 14px; padding: 28px 16px;
+               text-align: center; cursor: pointer; transition: all .15s; background: #fff; }
+  .choix-btn:hover { border-color: #0071e3; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,113,227,.15); }
+  .choix-btn .ico { font-size: 44px; display: block; margin-bottom: 10px; }
+  .choix-btn .titre { font-size: 20px; font-weight: 700; display: block; margin-bottom: 8px; }
+  .choix-btn .desc { font-size: 13px; color: #6e6e73; line-height: 1.5; }
+  .etape-titre { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .etape-sous { font-size: 13px; color: #6e6e73; margin-bottom: 16px; }
+
+  /* --- Étape 2 : dépôt --- */
+  #etape2 { display: none; }
+  .pipeline-bar { display: flex; align-items: center; justify-content: space-between;
+                  background: #f0f7ff; border: 1px solid #0071e3; border-radius: 10px;
+                  padding: 12px 16px; margin-bottom: 20px; }
+  .pipeline-bar .p { font-weight: 700; font-size: 16px; }
+  .pipeline-bar button { background: none; border: none; color: #0071e3; font-size: 14px;
+                         font-weight: 600; cursor: pointer; text-decoration: underline; }
+  .regles-hint { font-size: 13px; color: #6e6e73; background: #f9f9fb; border-radius: 8px;
+                 padding: 10px 14px; margin-bottom: 20px; line-height: 1.5; }
+  .regles-hint b { color: #1d1d1f; }
   button.lancer { width: 100%; padding: 16px; font-size: 18px; font-weight: 700; color: #fff; background: #0071e3; border: none; border-radius: 10px; cursor: pointer; }
   button.lancer:hover { background: #0077ed; }
   button.lancer:disabled { background: #a0a0a0; cursor: not-allowed; }
@@ -78,6 +97,7 @@
   .com { font-size: 13px; padding: 8px 10px; background: #f9f9fb; border-radius: 8px; margin-bottom: 6px; }
   .com-tc { font-weight: 700; color: #0071e3; font-variant-numeric: tabular-nums; }
   .com-file { color: #6e6e73; font-size: 12px; }
+  @media (max-width: 520px) { .choix { flex-direction: column; } }
 </style>
 </head>
 <body>
@@ -95,32 +115,56 @@
 
 <div class="container" id="contenu">
   <h1>🔍 Factory de vérification</h1>
-  <p class="subtitle">Contrôle qualité designs & vidéos — avec ou sans brief, règles Drive</p>
+  <p class="subtitle">Contrôle qualité — pipeline Design ou Vidéo, règles Drive</p>
 
   <div class="card">
     <div class="note" id="noteDossier"></div>
 
-    <label for="client">Client <span style="font-weight:400;color:#6e6e73;">(optionnel)</span></label>
-    <select id="client">
-      <option value="">— Sans client : dépôt rapide (lien seul, sans brief) —</option>
-      {% for c in clients %}
-      <option value="{{ c.name }}">{{ c.name }}</option>
-      {% endfor %}
-      <option value="__autre__">Autre (nouveau client)</option>
-    </select>
-
-    <label for="url">Lien Frame.io</label>
-    <input type="url" id="url" placeholder="https://f.io/xxxxxx" autocomplete="off">
-
-    <label>Type de livrable</label>
-    <div class="types">
-      <div class="type-opt" data-type="design">🎨 Design<small>Visuel statique</small></div>
-      <div class="type-opt" data-type="video">🎬 Vidéo<small>Sous-titres + audio</small></div>
-      <div class="type-opt" data-type="motion">✨ Motion design<small>Animation + texte</small></div>
+    <!-- ÉTAPE 1 : choix du pipeline -->
+    <div id="etape1">
+      <div class="etape-titre">Étape 1 — Que voulez-vous vérifier ?</div>
+      <div class="etape-sous">Chaque pipeline applique ses propres règles de vérification.</div>
+      <div class="choix">
+        <div class="choix-btn" id="btnDesign" role="button" tabindex="0">
+          <span class="ico">🎨</span>
+          <span class="titre">DESIGN</span>
+          <span class="desc">Visuels statiques — textes et langue, identité visuelle, composition, lisibilité, format et zones sûres, CTA</span>
+        </div>
+        <div class="choix-btn" id="btnVideo" role="button" tabindex="0">
+          <span class="ico">🎬</span>
+          <span class="titre">VIDÉO</span>
+          <span class="desc">Vidéos — transcription audio, sous-titres et textes à l'écran, contrôle technique audio/vidéo, fin sur CTA</span>
+        </div>
+      </div>
     </div>
 
-    <button class="lancer" id="btnLancer" disabled>Lancer la vérification</button>
-    <div class="status" id="status"></div>
+    <!-- ÉTAPE 2 : dépôt du lien -->
+    <div id="etape2">
+      <div class="etape-titre">Étape 2 — Déposez le lien Frame.io</div>
+      <div class="etape-sous">Le contrôle démarre dès le lancement. Les corrections sont publiées automatiquement en commentaires Frame.io.</div>
+
+      <div class="pipeline-bar">
+        <span class="p" id="pipelineNom">🎨 Pipeline DESIGN</span>
+        <button id="btnChanger" type="button">← Changer</button>
+      </div>
+
+      <div class="regles-hint" id="reglesHint"></div>
+
+      <label for="client">Client <span style="font-weight:400;color:#6e6e73;">(optionnel — active ses règles Drive et sa charte)</span></label>
+      <select id="client">
+        <option value="">— Sans client : dépôt rapide —</option>
+        {% for c in clients %}
+        <option value="{{ c.name }}">{{ c.name }}</option>
+        {% endfor %}
+        <option value="__autre__">Autre (nouveau client)</option>
+      </select>
+
+      <label for="url">Lien Frame.io</label>
+      <input type="url" id="url" placeholder="https://f.io/xxxxxx" autocomplete="off">
+
+      <button class="lancer" id="btnLancer" disabled>Lancer la vérification</button>
+      <div class="status" id="status"></div>
+    </div>
   </div>
 
   <h2>⚙️ En cours</h2>
@@ -134,49 +178,67 @@
 </div>
 
 <script>
-// --- Code d'accès (vérifié côté serveur) ---
-async function verifierCode() {
-  const saisie = document.getElementById('codeInput').value.trim();
-  const err = document.getElementById('codeErreur');
-  try {
-    const r = await fetch('/api/code', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code: saisie})
-    });
-    const d = await r.json();
-    if (d.ok) {
-      entrer();
-    } else {
-      err.style.display = 'block';
-      document.getElementById('codeInput').value = '';
-      document.getElementById('codeInput').focus();
-    }
-  } catch(e) {
-    err.textContent = 'Erreur de connexion au serveur.';
-    err.style.display = 'block';
+// --- Code d'accès ---
+const CODE_ACCES = 'wenov';
+function verifierCode() {
+  const saisie = document.getElementById('codeInput').value.trim().toLowerCase();
+  if (saisie === CODE_ACCES) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('contenu').classList.add('visible');
+    try { sessionStorage.setItem('qc_acces', 'ok'); } catch(e) {}
+    chargerJobs();
+  } else {
+    document.getElementById('codeErreur').style.display = 'block';
+    document.getElementById('codeInput').value = '';
+    document.getElementById('codeInput').focus();
   }
 }
-function entrer() {
-  document.getElementById('gate').style.display = 'none';
-  document.getElementById('contenu').classList.add('visible');
-  chargerJobs();
-}
-// Si une session serveur existe déjà, entrer directement
-fetch('/api/session').then(r => r.json()).then(d => {
-  if (d.auth) entrer();
-}).catch(() => {});
+try {
+  if (sessionStorage.getItem('qc_acces') === 'ok') {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('contenu').classList.add('visible');
+  }
+} catch(e) {}
 
-let typeChoisi = '';
-const typeOpts = document.querySelectorAll('.type-opt');
-typeOpts.forEach(el => {
-  el.addEventListener('click', () => {
-    typeOpts.forEach(o => o.classList.remove('selected'));
-    el.classList.add('selected');
-    typeChoisi = el.dataset.type;
-    majBouton();
-  });
-});
+// --- Étape 1 → 2 ---
+let pipeline = '';
+const PIPELINES = {
+  design: {
+    nom: '🎨 Pipeline DESIGN',
+    regles: 'Règles appliquées : <b>REGLES_COMMUNES</b> + <b>REGLES_DESIGN</b> (textes et langue, identité visuelle, composition, lisibilité, format et zones sûres, CTA) + règles du dossier Drive client si sélectionné.'
+  },
+  video: {
+    nom: '🎬 Pipeline VIDÉO',
+    regles: 'Règles appliquées : <b>REGLES_COMMUNES</b> + <b>REGLES_VIDEO</b> (transcription, sous-titres, contrôle technique audio/vidéo, fin sur CTA) + règles du dossier Drive client si sélectionné.'
+  }
+};
+const etape1 = document.getElementById('etape1');
+const etape2 = document.getElementById('etape2');
+const pipelineNom = document.getElementById('pipelineNom');
+const reglesHint = document.getElementById('reglesHint');
+
+function choisirPipeline(p) {
+  pipeline = p;
+  pipelineNom.textContent = PIPELINES[p].nom;
+  reglesHint.innerHTML = PIPELINES[p].regles;
+  etape1.style.display = 'none';
+  etape2.style.display = 'block';
+  note.style.display = 'none';
+  majBouton();
+  document.getElementById('url').focus();
+}
+function retourChoix() {
+  pipeline = '';
+  etape2.style.display = 'none';
+  etape1.style.display = 'block';
+  note.style.display = 'none';
+  majBouton();
+}
+document.getElementById('btnDesign').addEventListener('click', () => choisirPipeline('design'));
+document.getElementById('btnVideo').addEventListener('click', () => choisirPipeline('video'));
+document.getElementById('btnDesign').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') choisirPipeline('design'); });
+document.getElementById('btnVideo').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') choisirPipeline('video'); });
+document.getElementById('btnChanger').addEventListener('click', retourChoix);
 
 const clientSel = document.getElementById('client');
 const urlInput = document.getElementById('url');
@@ -184,7 +246,7 @@ const btn = document.getElementById('btnLancer');
 const note = document.getElementById('noteDossier');
 const status = document.getElementById('status');
 
-const TYPE_ICON = { design: '🎨 Design', video: '🎬 Vidéo', motion: '✨ Motion design' };
+const TYPE_ICON = { design: '🎨 Design', video: '🎬 Vidéo' };
 const PHASE_LABEL = {
   attente: 'En file d\u2019attente…',
   resolution: 'Analyse du lien Frame.io…',
@@ -197,20 +259,19 @@ const PHASE_LABEL = {
 };
 
 function majBouton() {
-  btn.disabled = !(urlInput.value.trim() && typeChoisi);
+  btn.disabled = !(pipeline && urlInput.value.trim());
 }
 
 clientSel.addEventListener('change', () => {
   if (clientSel.value === '__autre__') {
-    note.textContent = '⚠️ Pas de dossier trouvé (nouveau client) — règles client et branding non applicables. Le brief ne sera pas vérifié (dépôt page HTML).';
+    note.textContent = '⚠️ Nouveau client — règles client et branding non applicables (aucun dossier Drive). Seules les règles globales du pipeline s\u2019appliquent.';
     note.style.display = 'block';
   } else if (clientSel.value === '') {
-    note.textContent = 'ℹ️ Sans brief ici : seul le brief ne sera pas vérifié. Dès qu\u2019un client est choisi, son Drive, ses règles et ses visuels sont contrôlés normalement.';
+    note.textContent = 'ℹ️ Dépôt rapide : règles globales du pipeline uniquement. Sélectionnez un client pour activer ses règles Drive, sa charte et ses visuels.';
     note.style.display = 'block';
   } else {
     note.style.display = 'none';
   }
-  majBouton();
 });
 urlInput.addEventListener('input', majBouton);
 
@@ -222,16 +283,9 @@ btn.addEventListener('click', async () => {
     const r = await fetch('/api/lancer', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({client: clientSel.value, frameio_url: urlInput.value.trim(), type: typeChoisi})
+      body: JSON.stringify({client: clientSel.value, frameio_url: urlInput.value.trim(), type: pipeline})
     });
     const d = await r.json();
-    if (r.status === 401) {
-      // Session expirée : redemander le code
-      document.getElementById('contenu').classList.remove('visible');
-      document.getElementById('gate').style.display = 'flex';
-      btn.disabled = false;
-      return;
-    }
     if (d.ok) {
       if (d.note_dossier) {
         note.textContent = '⚠️ ' + d.note_dossier;
