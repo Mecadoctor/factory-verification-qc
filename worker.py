@@ -398,6 +398,17 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
         except Exception as e:
             result['erreurs'].append(f'Analyse image: {e}')
 
+    # REGLES_COMMUNES §4 : si tout est valide (aucun commentaire, aucune
+    # erreur), publier un seul « PARFAIT ! » — placé à la fin de la vidéo
+    # quand la durée est connue, sinon au début.
+    if not result['commentaires'] and not result['erreurs']:
+        duree = file_info.get('duration') or 0
+        try:
+            ts = max(0.0, float(duree) - 1.0)
+        except (TypeError, ValueError):
+            ts = 0.0
+        result['commentaires'].append({'timestamp': ts, 'text': 'PARFAIT !'})
+
     return result
 
 # --- Traitement d'un job complet ---
