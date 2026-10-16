@@ -269,7 +269,7 @@ def transcrire(video_path, wav_path):
     script = f"""
 import json, numpy as np, soundfile as sf
 from faster_whisper import WhisperModel
-model = WhisperModel(WHISPER_MODEL, device='cpu', compute_type='int8')
+model = WhisperModel('{WHISPER_MODEL}', device='cpu', compute_type='int8')
 audio, sr = sf.read('{wav_path}')
 segments, info = model.transcribe(audio, language='fr', beam_size=5)
 segs = [{{'start': s.start, 'end': s.end, 'text': s.text.strip()}} for s in segments]
