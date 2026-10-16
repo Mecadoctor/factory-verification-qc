@@ -6,7 +6,7 @@ Variables d'environnement :
   FLASK_SECRET  Clé de signature des sessions (à définir en prod !)
   PORT          Port d'écoute (défaut: 5057)
 """
-import json, os, uuid, time, secrets
+import json, os, re, uuid, time, secrets
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, Response, session, redirect
 from functools import wraps
@@ -313,6 +313,7 @@ def jobs():
             'estimation': fmt_duree(estimation),
             'restant': fmt_duree(max(0, estimation - ecoule)),
             'position_file': positions.get(j['id'], 0),
+            'erreur': j.get('erreur', ''),
         })
 
     for fn in sorted(os.listdir(rdir), reverse=True)[:30]:
@@ -349,6 +350,19 @@ def jobs():
         })
 
     return jsonify({'ok': True, 'actifs': actifs, 'termines': termines})
+
+@app.route('/api/job/<job_id>', methods=['DELETE'])
+@auth_requise
+def retirer_job(job_id):
+    if not re.match(r'^[a-f0-9]{8,16}$', job_id):
+        return jsonify({'ok': False}), 400
+    qdir = os.path.join(BASE, 'queue')
+    cible = os.path.join(qdir, f'{job_id}.json')
+    # Sécurité : rester dans le dossier queue
+    if os.path.realpath(cible).startswith(os.path.realpath(qdir)) and os.path.exists(cible):
+        os.remove(cible)
+        return jsonify({'ok': True})
+    return jsonify({'ok': False}), 404
 
 @app.route('/api/rapport/<job_id>')
 def rapport(job_id):
