@@ -20,12 +20,9 @@ from pathlib import Path
 BASE = Path(__file__).parent
 QUEUE = BASE / 'queue'
 RESULTS = BASE / 'results'
-QC = Path.home() / 'workspace' / 'qc-subs'
-# Dossier des règles : ~/workspace/qc-subs/regles en local, repli sur
-# <dossier_du_worker>/regles (déploiement Render).
-REGLES = QC / 'regles'
-if not REGLES.is_dir():
-    REGLES = BASE / 'regles'
+REGLES = BASE / 'regles'
+# Modèle Whisper : nom faster-whisper (téléchargé si absent) ou chemin local
+WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')
 STATS_PATH = BASE / 'stats.json'
 
 # --- Configuration d'ordonnancement ---
@@ -77,17 +74,34 @@ def estimer_duree(type_job, nb_fichiers=2):
     fixe = ESTIMATION_DEFAUT[type_job]['fixe']
     return int(fixe + par_fichier * nb_fichiers)
 
+def normaliser_pipeline(type_job):
+    return 'video' if type_job == 'motion' else type_job
+
 def charge_job(job):
     return 'lourd' if normaliser_pipeline(job.get('type')) == 'video' else 'leger'
 
 # --- Frame.io ---
 def frameio_token():
-    sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
-    from dynamic_credentials import dynamic_credential_entry
-    entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
-    return str(entry["surrogate"]).strip()
+    """Token Frame.io v4 : OAuth2 Adobe (prod, via refresh token),
+    ou FRAMEIO_TOKEN legacy (dev), ou credential local du runtime Muse."""
+    try:
+        sys.path.insert(0, str(BASE))
+        from adobe_auth import get_access_token
+        return get_access_token()
+    except Exception as e:
+        print(f"OAuth Adobe indisponible ({e}), repli legacy...", flush=True)
+    tok = os.environ.get('FRAMEIO_TOKEN', '').strip()
+    if tok:
+        return tok
+    try:
+        sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
+        from dynamic_credentials import dynamic_credential_entry
+        entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
+        return str(entry["surrogate"]).strip()
+    except Exception:
+        raise RuntimeError("Aucun token Frame.io : configurer ADOBE_REFRESH_TOKEN (prod) ou FRAMEIO_TOKEN.")
 
-ACCT = "4516c658-53a4-4a52-8b5a-d200803ed2d6"
+ACCT = os.environ.get('FRAMEIO_ACCOUNT_ID', '4516c658-53a4-4a52-8b5a-d200803ed2d6')
 
 def api(method, path, data=None):
     import urllib.request, urllib.error
@@ -133,7 +147,7 @@ def resolve_share(url):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
     }
-    # Retry sur échec réseau OU HTTP transitoire (ex. 403 anti-robot)
+    # Retry sur échec réseau OU HTTP (ex. 403 anti-robot) — jamais d'abandon immédiat
     html = ''
     final_url = ''
     captured = [share_code]
@@ -183,8 +197,6 @@ def resolve_share(url):
             "Astuce : ouvrez le lien dans votre navigateur, cliquez sur la vidéo, "
             "puis collez l'URL complète (elle contient /view/...)."
         )
-    if not succes:
-        return share_code, []
     share_id = captured[0]
     # Tous les assets du partage via les URLs d'images /image/<uuid>/
     # (chaque vidéo du partage a sa miniature). Dédupliqué.
@@ -235,11 +247,8 @@ REGLES_PAR_PIPELINE = {
     'video': ['00_LIRE_EN_PREMIER.md', 'REGLES_COMMUNES.md', 'REGLES_VIDEO.md'],
 }
 
-def normaliser_pipeline(type_job):
-    return 'video' if type_job == 'motion' else type_job
-
 def lire_regles(pipeline):
-    """Charge le paquet de règles du pipeline (miroirs locaux du Drive)."""
+    """Charge le paquet de règles du pipeline (dossier regles du déploiement)."""
     pipeline = normaliser_pipeline(pipeline)
     fichiers = REGLES_PAR_PIPELINE.get(pipeline, REGLES_PAR_PIPELINE['video'])
     regles = {}
@@ -256,11 +265,11 @@ def transcrire(video_path, wav_path):
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(video_path),
                     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
                     str(wav_path)], check=True, timeout=300)
-    venv_py = QC / 'venv' / 'bin' / 'python'
+    venv_py = sys.executable
     script = f"""
 import json, numpy as np, soundfile as sf
 from faster_whisper import WhisperModel
-model = WhisperModel('{QC}/models/fw-small', device='cpu', compute_type='int8')
+model = WhisperModel(WHISPER_MODEL, device='cpu', compute_type='int8')
 audio, sr = sf.read('{wav_path}')
 segments, info = model.transcribe(audio, language='fr', beam_size=5)
 segs = [{{'start': s.start, 'end': s.end, 'text': s.text.strip()}} for s in segments]
@@ -392,7 +401,7 @@ def traiter_job(job):
     (QUEUE / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False, indent=2))
 
     regles = lire_regles(job['type'])
-    workdir = QC / 'web' / 'work' / jid
+    workdir = BASE / 'work' / jid
     workdir.mkdir(parents=True, exist_ok=True)
 
     # Résoudre le lien Frame.io -> les assets réellement partagés
@@ -590,7 +599,7 @@ def reprendre_jobs_abandonnes():
 
 def main():
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (QC / 'web' / 'work').mkdir(parents=True, exist_ok=True)
+    (BASE / 'work').mkdir(parents=True, exist_ok=True)
     reprendre_jobs_abandonnes()
     print(f"Worker QC démarré (lourd×{MAX_LOURD_PARALLELE}, léger×{MAX_LEGER_PARALLELE}).",
           flush=True)
