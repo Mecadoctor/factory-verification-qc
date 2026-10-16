@@ -373,7 +373,7 @@ def traiter_job(job):
     job['progression']['pourcent'] = 2
     (QUEUE / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False, indent=2))
 
-    regles = lire_regles()
+    regles = lire_regles(job['type'])
     workdir = QC / 'web' / 'work' / jid
     workdir.mkdir(parents=True, exist_ok=True)
 
