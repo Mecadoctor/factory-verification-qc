@@ -207,6 +207,23 @@ def resolve_share(url):
         if aid not in vus:
             vus.add(aid)
             assets.append({'id': aid})
+    # Partages multi-assets : la page est une SPA React ; les assets ne sont
+    # pas dans le HTML statique mais dans le cache Apollo embarqué
+    # ("InboxItemAsset:<uuid>"). Ces IDs sont les file IDs v4 (vérifié :
+    # même namespace que l'asset téléchargé via /v4/files). On privilégie
+    # les assets de type FILE (pas les dossiers partagés).
+    unesc = html.replace('\\"','"')
+    for m2 in re.finditer(
+            r'InboxItemAsset:([a-f0-9-]{36})[^{]*?"assetType":"FILE"', unesc):
+        aid = m2.group(1)
+        if aid not in vus:
+            vus.add(aid)
+            assets.append({'id': aid})
+    for m2 in re.finditer(r'InboxItemAsset:([a-f0-9-]{36})', unesc):
+        aid = m2.group(1)
+        if aid not in vus:
+            vus.add(aid)
+            assets.append({'id': aid})
     if assets:
         return share_id, assets
     # Repli : asset dans l'URL finale
