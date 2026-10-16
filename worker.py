@@ -257,11 +257,20 @@ def post_comment(file_id, seconds, text, fps=30):
 
 def compter_commentaires(fid):
     """Nombre de commentaires persistés sur Frame.io (F-012 : la source de
-    vérité est GET /comments, pas le compteur du worker). None si injoignable."""
+    vérité est GET /comments, pas le compteur du worker). Suit la pagination.
+    None si injoignable."""
     try:
-        c, d = api('GET', f'/v4/accounts/{ACCT}/files/{fid}/comments')
-        if c == 200 and isinstance(d, dict):
-            return len(d.get('data', []))
+        total, url = 0, f'/v4/accounts/{ACCT}/files/{fid}/comments'
+        for _ in range(20):  # garde-fou : 20 pages max
+            c, d = api('GET', url)
+            if c != 200 or not isinstance(d, dict):
+                return None
+            total += len(d.get('data', []))
+            nxt = (d.get('links') or {}).get('next')
+            if not nxt:
+                return total
+            url = nxt if nxt.startswith('/v4/') else '/v4/' + nxt.lstrip('/')
+        return total
     except Exception:
         pass
     return None
@@ -372,6 +381,16 @@ def texte_ecran_valide(texte):
         return False
     tl = t.lower()
     if tl.startswith(('http', 'www.')) or t.replace(' ', '').isdigit():
+        return False
+    return True
+
+def segment_transcription_valide(texte):
+    """Filtre anti-bruit transcription : Whisper produit parfois des fragments
+    (interjections, bruits) — LanguageTool ne doit corriger que des phrases."""
+    t = (texte or '').strip()
+    if len(t) < 10:
+        return False
+    if len(t.split()) < 2:
         return False
     return True
 
@@ -513,7 +532,7 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
             if tr:
                 for seg in tr.get('segments', []):
                     texte = (seg.get('text') or '').strip()
-                    if len(texte) < 3:
+                    if not segment_transcription_valide(texte):
                         continue
                     sec = seg.get('start', 0) or 0
                     for f in verifier_texte_languagetool(texte, 'fr'):
