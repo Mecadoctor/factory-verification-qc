@@ -560,9 +560,13 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
             for sec, texte in ocr:
                 if not texte_ecran_valide(texte):
                     continue
-                for f in verifier_texte_languagetool(texte, 'fr'):
-                    if not faute_valide(f['faute'], f['correction']):
-                        continue
+                fautes = [f for f in verifier_texte_languagetool(texte, 'fr')
+                          if faute_valide(f['faute'], f['correction'])]
+                # Cohérence : si plus de la moitié des mots sont des « fautes »,
+                # c'est du bruit OCR, pas du vrai texte fautif — ignorer.
+                if len(fautes) * 2 >= len(texte.split()):
+                    continue
+                for f in fautes:
                     cle = (f['faute'].lower(), f['correction'].lower())
                     if cle not in vus:
                         vus.add(cle)
