@@ -253,7 +253,27 @@ def post_comment(file_id, seconds, text, fps=30):
     ts = int(seconds * fps)
     code, data = api('POST', f'/v4/accounts/{ACCT}/files/{file_id}/comments',
                      {"data": {"text": text, "timestamp": ts}})
-    return code in (200, 201)
+    if code not in (200, 201):
+        return False
+    # F-012 : un 2xx ne prouve pas la persistance — vérifier via GET
+    # (éventuelle latence d'indexation : 3 tentatives espacées).
+    cid = (data.get('data') or {}).get('id') if isinstance(data, dict) else None
+    if not cid:
+        return True
+    for _ in range(3):
+        time.sleep(2)
+        code2, data2 = api('GET', f'/v4/accounts/{ACCT}/files/{file_id}/comments')
+        if code2 == 200 and isinstance(data2, dict):
+            ids = []
+            for c in data2.get('data', []):
+                d = (c.get('data', c) or {}) if isinstance(c, dict) else {}
+                if isinstance(d, dict) and d.get('id'):
+                    ids.append(d['id'])
+            if cid in ids:
+                return True
+    print(f"post_comment : commentaire {cid} introuvable après POST "
+          f"(file {file_id})", flush=True)
+    return False
 
 # --- Règles (factory v3 : un paquet par pipeline) ---
 # DESIGN -> REGLES_COMMUNES + REGLES_DESIGN
@@ -298,6 +318,113 @@ print(json.dumps({{'segments': segs, 'lang': info.language}}))
     if not m:
         raise RuntimeError(f"Transcription échouée: {p.stderr[:300]}")
     return json.loads(m.group(0))
+
+# --- Vérification linguistique (LANG-003..007, V-04/SUB-005) ---
+LANGUAGETOOL_URL = 'https://api.languagetool.org/v2/check'
+
+def formater_tc(sec):
+    m, s = divmod(int(max(0, sec)), 60)
+    return f"{m:02d}:{s:02d}"
+
+def verifier_texte_languagetool(text, lang='fr'):
+    """Fautes détectées par LanguageTool : [{'faute','correction','regle'}].
+    [] si le service est injoignable (ne bloque jamais le job)."""
+    import urllib.request, urllib.error, urllib.parse
+    if not text or len(text.strip()) < 3:
+        return []
+    resp = None
+    for tentative in range(3):
+        try:
+            data = urllib.parse.urlencode(
+                {'text': text, 'language': lang}).encode()
+            req = urllib.request.Request(
+                LANGUAGETOOL_URL, data=data, method='POST',
+                headers={'Content-Type': 'application/x-www-form-urlencoded',
+                         'User-Agent': 'Mozilla/5.0 (FactoryQC)'})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                resp = json.loads(r.read().decode())
+            break
+        except Exception as e:
+            print(f"LanguageTool tentative {tentative+1}/3: {e}", flush=True)
+            time.sleep(2 * (tentative + 1))
+    if resp is None:
+        return []
+    fautes = []
+    for m in resp.get('matches', []):
+        o, l = m.get('offset', 0), m.get('length', 0)
+        if o < 0 or l <= 0 or o + l > len(text):
+            continue
+        rep = (m.get('replacements') or [{}])[0].get('value', '')
+        if rep and rep.lower() == text[o:o+l].lower():
+            continue
+        fautes.append({'faute': text[o:o+l], 'correction': rep,
+                       'regle': (m.get('rule') or {}).get('id', '')})
+    return fautes
+
+def commentaire_faute(sec, faute, correction):
+    tc = formater_tc(sec)
+    if correction:
+        return (sec, f"{tc} — Corriger '{faute}' en '{correction}'.")
+    return (sec, f"{tc} — '{faute}' : à vérifier.")
+
+def verifier_transcription_linguistique(tr):
+    """V-04/SUB-005 : l'écrit doit être impeccable même si l'oral a des fautes."""
+    commentaires, vus = [], set()
+    for seg in tr.get('segments', []):
+        texte = (seg.get('text') or '').strip()
+        if len(texte) < 3:
+            continue
+        sec = seg.get('start', 0) or 0
+        for f in verifier_texte_languagetool(texte, 'fr'):
+            cle = (f['faute'].lower(), f['correction'].lower())
+            if cle in vus:
+                continue
+            vus.add(cle)
+            commentaires.append(commentaire_faute(sec, f['faute'], f['correction']))
+            time.sleep(0.5)  # ménager l'API LanguageTool
+    return commentaires
+
+def extraire_textes_ecran(video_path, workdir):
+    """V-02/SUB-001 : 1 capture/seconde + OCR tesseract (fra+eng).
+    Retourne [(sec, texte)] — un seul par texte distinct consécutif."""
+    frames = workdir / 'frames'
+    frames.mkdir(exist_ok=True)
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(video_path),
+                    '-vf', 'fps=1,scale=1280:-1',
+                    str(frames / 'f%04d.png')],
+                   timeout=600, check=True)
+    resultats, dernier = [], None
+    for img in sorted(frames.glob('f*.png')):
+        try:
+            sec = int(img.stem[1:]) - 1
+        except ValueError:
+            continue
+        try:
+            p = subprocess.run(['tesseract', str(img), 'stdout', '-l', 'fra+eng',
+                                '--psm', '6'],
+                               capture_output=True, text=True, timeout=90)
+            texte = ' '.join(p.stdout.split())
+        except Exception:
+            continue
+        if texte == dernier:
+            continue
+        dernier = texte
+        # V-02 : filtrer fragments (logos/URLs) et bruit OCR
+        if len(texte) >= 4 and not texte.lower().startswith(('http', 'www.')):
+            resultats.append((sec, texte))
+    return resultats
+
+def verifier_textes_ecran(ocr_resultats):
+    """V-03/V-04 : règles LANG appliquées aux textes incrustés."""
+    commentaires, vus = [], set()
+    for sec, texte in ocr_resultats:
+        if texte in vus:
+            continue
+        vus.add(texte)
+        for f in verifier_texte_languagetool(texte, 'fr'):
+            commentaires.append(commentaire_faute(sec, f['faute'], f['correction']))
+            time.sleep(0.5)
+    return commentaires
 
 # --- Progression ---
 def maj_progression(jid, phase=None, fichiers_faits=None, fichiers_total=None,
@@ -360,15 +487,30 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
     local = workdir / f"{fid}{ext}"
     subprocess.run(['curl', '-sL', '-o', str(local), hq_url], timeout=600)
 
+    # Durée réelle (pour placer le « PARFAIT ! » en fin de vidéo)
+    duree_video = file_info.get('duration') or 0
+    if ftype == 'video' and not duree_video:
+        try:
+            p = subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
+                                'format=duration', '-of', 'csv=p=0', str(local)],
+                               capture_output=True, text=True, timeout=30)
+            duree_video = float(p.stdout.strip())
+        except Exception:
+            duree_video = 0
+
     if ftype == 'video':
         etape('transcription')
         wav = workdir / f"{fid}.wav"
+        tr = None
         try:
             tr = transcrire(local, wav)
             result['transcription_segments'] = len(tr['segments'])
             result['note'] = f"Transcription: {len(tr['segments'])} segments. Analyse détaillée dans le rapport."
             (workdir / f"{fid}-transcription.json").write_text(
                 json.dumps(tr, ensure_ascii=False, indent=1))
+            # --- Vérification linguistique de la transcription (V-04/SUB-005) ---
+            for sec, txt in verifier_transcription_linguistique(tr):
+                result['commentaires'].append({'timestamp': sec, 'text': txt})
         except Exception as e:
             result['erreurs'].append(f'Transcription: {e}')
         etape('analyse')
@@ -385,6 +527,14 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
                 result['commentaires'].append({'timestamp': sec, 'text': txt})
         except Exception as e:
             result['erreurs'].append(f'Contrôle technique: {e}')
+        # --- OCR des textes à l'écran (V-02/V-03) + vérification LANG ---
+        try:
+            ocr = extraire_textes_ecran(local, workdir)
+            result['textes_ecran'] = [{'sec': s, 'texte': t} for s, t in ocr]
+            for sec, txt in verifier_textes_ecran(ocr):
+                result['commentaires'].append({'timestamp': sec, 'text': txt})
+        except Exception as e:
+            result['erreurs'].append(f'OCR: {e}')
     else:
         etape('analyse')
         try:
@@ -397,14 +547,28 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
             result['dimensions'] = f"{s['width']}x{s['height']}"
         except Exception as e:
             result['erreurs'].append(f'Analyse image: {e}')
+        # --- OCR + vérification linguistique du visuel (D-01/LANG) ---
+        try:
+            p = subprocess.run(['tesseract', str(local), 'stdout', '-l', 'fra+eng',
+                                '--psm', '6'],
+                               capture_output=True, text=True, timeout=120)
+            texte = ' '.join(p.stdout.split())
+            result['texte_detecte'] = texte
+            for f in verifier_texte_languagetool(texte, 'fr'):
+                result['commentaires'].append(
+                    {'timestamp': 0,
+                     'text': f"Corriger '{f['faute']}' en '{f['correction']}'."
+                             if f['correction'] else f"'{f['faute']}' : à vérifier."})
+                time.sleep(0.5)
+        except Exception as e:
+            result['erreurs'].append(f'OCR design: {e}')
 
     # REGLES_COMMUNES §4 : si tout est valide (aucun commentaire, aucune
     # erreur), publier un seul « PARFAIT ! » — placé à la fin de la vidéo
     # quand la durée est connue, sinon au début.
     if not result['commentaires'] and not result['erreurs']:
-        duree = file_info.get('duration') or 0
         try:
-            ts = max(0.0, float(duree) - 1.0)
+            ts = max(0.0, float(duree_video) - 1.0)
         except (TypeError, ValueError):
             ts = 0.0
         result['commentaires'].append({'timestamp': ts, 'text': 'PARFAIT !'})

@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 
-# ffmpeg + dépendances système pour onnxruntime / opencv / soundfile
+# ffmpeg + tesseract (OCR) + dépendances système pour onnxruntime / opencv / soundfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl libsndfile1 libgl1 libglib2.0-0 \
+    tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
