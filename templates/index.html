@@ -98,6 +98,28 @@
   .com-tc { font-weight: 700; color: #0071e3; font-variant-numeric: tabular-nums; }
   .com-file { color: #6e6e73; font-size: 12px; }
   @media (max-width: 520px) { .choix { flex-direction: column; } }
+
+  /* --- Hub agents --- */
+  #hub { display: none; }
+  #verif { display: none; }
+  .agents { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .agent-card { position: relative; border: 2px solid #d2d2d7; border-radius: 14px;
+                padding: 28px 16px; text-align: center; background: #fff; transition: all .15s; }
+  .agent-card.actif { cursor: pointer; }
+  .agent-card.actif:hover { border-color: #0071e3; transform: translateY(-2px);
+                            box-shadow: 0 4px 12px rgba(0,113,227,.15); }
+  .agent-card.inactif { opacity: .6; cursor: not-allowed; background: #f9f9fb; }
+  .agent-card .ico { font-size: 44px; display: block; margin-bottom: 10px; }
+  .agent-card .titre { font-size: 22px; font-weight: 800; display: block; letter-spacing: 3px; }
+  .agent-card .role { font-size: 14px; font-weight: 600; color: #0071e3; display: block; margin: 6px 0 8px; }
+  .agent-card.inactif .role { color: #999; }
+  .agent-card .desc { font-size: 13px; color: #6e6e73; line-height: 1.5; }
+  .badge-dev { position: absolute; top: 10px; right: 10px; background: #fff3e0; color: #e65100;
+               font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+  .backbar { margin-bottom: 12px; }
+  .backbar button { background: none; border: none; color: #0071e3; font-size: 14px;
+                    font-weight: 600; cursor: pointer; }
+  @media (max-width: 520px) { .agents { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -114,8 +136,47 @@
 </div>
 
 <div class="container" id="contenu">
-  <h1>🔍 Factory de vérification</h1>
-  <p class="subtitle">Contrôle qualité — pipeline Design ou Vidéo, règles Drive</p>
+
+  <!-- HUB : choix de l'agent -->
+  <div id="hub">
+    <h1>🤖 Agents IA</h1>
+    <p class="subtitle">Choisissez votre agent</p>
+    <div class="agents">
+      <div class="agent-card actif" id="agentEma" role="button" tabindex="0">
+        <span class="ico">🔍</span>
+        <span class="titre">EMA</span>
+        <span class="role">Agente AI de vérification</span>
+        <span class="desc">Elle contrôle vos designs et vidéos, publie les corrections sur Frame.io et valide avant livraison.</span>
+      </div>
+      <div class="agent-card inactif">
+        <span class="badge-dev">🎓 Encore à l'école</span>
+        <span class="ico">📅</span>
+        <span class="titre">TOM</span>
+        <span class="role">Agent AI Planning éditorial</span>
+        <span class="desc">Bientôt : il construira vos plannings éditoriaux mensuels.</span>
+      </div>
+      <div class="agent-card inactif">
+        <span class="badge-dev">🎓 Encore à l'école</span>
+        <span class="ico">💡</span>
+        <span class="titre">SAM</span>
+        <span class="role">Agent AI Brief et créativité</span>
+        <span class="desc">Bientôt : il rédigera vos briefs créatifs et concepts.</span>
+      </div>
+      <div class="agent-card inactif">
+        <span class="badge-dev">🎓 Encore à l'école</span>
+        <span class="ico">📰</span>
+        <span class="titre">RIO</span>
+        <span class="role">Agent AI Communiqué de presse</span>
+        <span class="desc">Bientôt : il rédigera vos communiqués de presse.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMA : factory de vérification -->
+  <div id="verif">
+    <div class="backbar"><button id="btnHub" type="button">← Agents</button></div>
+    <h1>🔍 Factory de vérification</h1>
+    <p class="subtitle">Contrôle qualité — pipeline Design ou Vidéo, règles Drive</p>
 
   <div class="card">
     <div class="note" id="noteDossier"></div>
@@ -175,41 +236,55 @@
 
   <h2>📁 Rapports sauvegardés (Drive)</h2>
   <div id="rapportsDrive"><p class="section-vide">Chargement…</p></div>
-</div>
+  </div><!-- /#verif -->
+</div><!-- /#contenu -->
 
 <script>
-// --- Code d'accès (vérifié côté serveur) ---
-async function verifierCode() {
-  const saisie = document.getElementById('codeInput').value.trim();
-  const err = document.getElementById('codeErreur');
-  try {
-    const r = await fetch('/api/code', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code: saisie})
-    });
-    const d = await r.json();
-    if (d.ok) {
-      entrer();
-    } else {
-      err.style.display = 'block';
-      document.getElementById('codeInput').value = '';
-      document.getElementById('codeInput').focus();
-    }
-  } catch(e) {
-    err.textContent = 'Erreur de connexion au serveur.';
-    err.style.display = 'block';
-  }
-}
+// --- Code d'accès (session serveur) ---
+const hub = document.getElementById('hub');
+const verif = document.getElementById('verif');
 function entrer() {
   document.getElementById('gate').style.display = 'none';
   document.getElementById('contenu').classList.add('visible');
+  hub.style.display = 'block';
+  verif.style.display = 'none';
+}
+async function verifierCode() {
+  const code = document.getElementById('codeInput').value.trim();
+  const r = await fetch('/api/code', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code})
+  });
+  if (r.ok) { entrer(); }
+  else {
+    document.getElementById('codeErreur').style.display = 'block';
+    document.getElementById('codeInput').value = '';
+    document.getElementById('codeInput').focus();
+  }
+}
+async function verifierSession() {
+  try {
+    const r = await fetch('/api/session');
+    const d = await r.json();
+    if (d.auth) entrer();
+  } catch(e) {}
+}
+
+// --- Hub agents : seule EMA est active ---
+function ouvrirEma() {
+  hub.style.display = 'none';
+  verif.style.display = 'block';
   chargerJobs();
 }
-// Si une session serveur existe déjà, entrer directement
-fetch('/api/session').then(r => r.json()).then(d => {
-  if (d.auth) entrer();
-}).catch(() => {});
+document.getElementById('agentEma').addEventListener('click', ouvrirEma);
+document.getElementById('agentEma').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') ouvrirEma();
+});
+document.getElementById('btnHub').addEventListener('click', () => {
+  verif.style.display = 'none';
+  hub.style.display = 'block';
+});
+verifierSession();
 
 // --- Étape 1 → 2 ---
 let pipeline = '';
@@ -414,6 +489,5 @@ async function chargerRapportsDrive() {
 chargerRapportsDrive();
 setInterval(chargerRapportsDrive, 60000);
 </script>
-</div><!-- /#contenu -->
 </body>
 </html>
