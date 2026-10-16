@@ -178,27 +178,38 @@
 </div>
 
 <script>
-// --- Code d'accès ---
-const CODE_ACCES = 'wenov';
-function verifierCode() {
-  const saisie = document.getElementById('codeInput').value.trim().toLowerCase();
-  if (saisie === CODE_ACCES) {
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('contenu').classList.add('visible');
-    try { sessionStorage.setItem('qc_acces', 'ok'); } catch(e) {}
-    chargerJobs();
-  } else {
-    document.getElementById('codeErreur').style.display = 'block';
-    document.getElementById('codeInput').value = '';
-    document.getElementById('codeInput').focus();
+// --- Code d'accès (vérifié côté serveur) ---
+async function verifierCode() {
+  const saisie = document.getElementById('codeInput').value.trim();
+  const err = document.getElementById('codeErreur');
+  try {
+    const r = await fetch('/api/code', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: saisie})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      entrer();
+    } else {
+      err.style.display = 'block';
+      document.getElementById('codeInput').value = '';
+      document.getElementById('codeInput').focus();
+    }
+  } catch(e) {
+    err.textContent = 'Erreur de connexion au serveur.';
+    err.style.display = 'block';
   }
 }
-try {
-  if (sessionStorage.getItem('qc_acces') === 'ok') {
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('contenu').classList.add('visible');
-  }
-} catch(e) {}
+function entrer() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('contenu').classList.add('visible');
+  chargerJobs();
+}
+// Si une session serveur existe déjà, entrer directement
+fetch('/api/session').then(r => r.json()).then(d => {
+  if (d.auth) entrer();
+}).catch(() => {});
 
 // --- Étape 1 → 2 ---
 let pipeline = '';
