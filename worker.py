@@ -712,6 +712,19 @@ def traiter_job(job):
             lignes.append("**Contrôle technique :**")
             for t in fr['technique']:
                 lignes.append(f"- {t}")
+        # Vérification linguistique (V-04/SUB-005, LANG-003..007)
+        if fr.get('corrections_texte'):
+            lignes.append("**Corrections linguistiques :**")
+            for co in fr['corrections_texte']:
+                tc = f"{int(co['sec']) // 60:02d}:{int(co['sec']) % 60:02d}"
+                lignes.append(f"- 🔤 {tc} — '{co['faute']}' → '{co['correction']}'")
+        elif fr.get('transcription_segments'):
+            lignes.append("- 🔤 Vérification linguistique : aucune faute détectée.")
+        # Couverture OCR (V-02 : limite déclarée, jamais masquée)
+        if fr.get('textes_ecran') is not None:
+            lignes.append(f"- 📷 OCR : {len(fr['textes_ecran'])} texte(s) distinct(s) "
+                          f"détecté(s) à 1 image/seconde. Limite : un élément affiché "
+                          f"entre deux captures peut avoir été manqué.")
         for c in fr.get('commentaires', []):
             txt = c.get('text', '') if isinstance(c, dict) else str(c)
             lignes.append(f"- 💬 {txt}")
