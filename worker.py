@@ -20,9 +20,12 @@ from pathlib import Path
 BASE = Path(__file__).parent
 QUEUE = BASE / 'queue'
 RESULTS = BASE / 'results'
-REGLES = BASE / 'regles'
-# Modèle Whisper : nom faster-whisper (téléchargé si absent) ou chemin local
-WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')
+QC = Path.home() / 'workspace' / 'qc-subs'
+# Dossier des règles : ~/workspace/qc-subs/regles en local, repli sur
+# <dossier_du_worker>/regles (déploiement Render).
+REGLES = QC / 'regles'
+if not REGLES.is_dir():
+    REGLES = BASE / 'regles'
 STATS_PATH = BASE / 'stats.json'
 
 # --- Configuration d'ordonnancement ---
@@ -74,34 +77,17 @@ def estimer_duree(type_job, nb_fichiers=2):
     fixe = ESTIMATION_DEFAUT[type_job]['fixe']
     return int(fixe + par_fichier * nb_fichiers)
 
-def normaliser_pipeline(type_job):
-    return 'video' if type_job == 'motion' else type_job
-
 def charge_job(job):
     return 'lourd' if normaliser_pipeline(job.get('type')) == 'video' else 'leger'
 
 # --- Frame.io ---
 def frameio_token():
-    """Token Frame.io v4 : OAuth2 Adobe (prod, via refresh token),
-    ou FRAMEIO_TOKEN legacy (dev), ou credential local du runtime Muse."""
-    try:
-        sys.path.insert(0, str(BASE))
-        from adobe_auth import get_access_token
-        return get_access_token()
-    except Exception as e:
-        print(f"OAuth Adobe indisponible ({e}), repli legacy...", flush=True)
-    tok = os.environ.get('FRAMEIO_TOKEN', '').strip()
-    if tok:
-        return tok
-    try:
-        sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
-        from dynamic_credentials import dynamic_credential_entry
-        entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
-        return str(entry["surrogate"]).strip()
-    except Exception:
-        raise RuntimeError("Aucun token Frame.io : configurer ADOBE_REFRESH_TOKEN (prod) ou FRAMEIO_TOKEN.")
+    sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
+    from dynamic_credentials import dynamic_credential_entry
+    entry = dynamic_credential_entry("custom.frameio-oauth", "access_token")
+    return str(entry["surrogate"]).strip()
 
-ACCT = os.environ.get('FRAMEIO_ACCOUNT_ID', '4516c658-53a4-4a52-8b5a-d200803ed2d6')
+ACCT = "4516c658-53a4-4a52-8b5a-d200803ed2d6"
 
 def api(method, path, data=None):
     import urllib.request, urllib.error
@@ -126,8 +112,12 @@ def resolve_share(url):
     """Résout un lien f.io -> (share_id, asset_id).
 
     https://f.io/XXXX redirige vers la page du partage. Le HTML contient
-    l'ID de l'asset visualisé dans le meta og:image :
-    .../image/<asset_id>/image_full_...
+    l'ID de l'asset visualisé dans les URLs /image/<asset_id>/...
+
+    Note : f.io / next.frame.io ont une protection anti-robot qui peut
+    refuser les requêtes serveur (HTTP 403). On utilise des en-têtes
+    navigateur complets + 3 tentatives avant d'abandonner avec un
+    message explicite.
     """
     import urllib.request, urllib.error
     m = re.search(r'f\.io/([A-Za-z0-9_-]+)', url)
@@ -137,11 +127,18 @@ def resolve_share(url):
             return None, [{'id': m.group(1)}]
         return None, []
     share_code = m.group(1)
-    # Retry sur échec réseau transitoire
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    }
+    # Retry sur échec réseau OU HTTP transitoire (ex. 403 anti-robot)
     html = ''
     final_url = ''
     captured = [share_code]
     succes = False
+    derniere_erreur = ''
     for tentative in range(3):
         try:
 
@@ -154,31 +151,38 @@ def resolve_share(url):
                     return urllib.request.HTTPRedirectHandler.redirect_request(
                         self, req, fp, code, msg, headers, newurl)
 
-            req = urllib.request.Request(f"https://f.io/{share_code}",
-                                         headers={"User-Agent": "Mozilla/5.0"})
+            req = urllib.request.Request(f"https://f.io/{share_code}", headers=HEADERS)
             opener = urllib.request.build_opener(CaptureRedirect)
             try:
                 with opener.open(req, timeout=20) as r:
                     final_url = r.geturl()
                     html = r.read().decode('utf-8', errors='ignore')
             except urllib.error.HTTPError as e:
-                print(f"resolve_share HTTP {e.code}", flush=True)
-                return share_code, []
+                derniere_erreur = f"HTTP {e.code}"
+                print(f"resolve_share tentative {tentative+1}/3: HTTP {e.code}", flush=True)
+                time.sleep(2 * (tentative + 1))
+                continue
             except Exception as e:
                 partial = getattr(e, 'partial', b'')
                 if partial:
                     html = partial.decode('utf-8', errors='ignore')
                 else:
-                    raise
+                    derniere_erreur = str(e)[:120]
+                    print(f"resolve_share tentative {tentative+1}/3: {e}", flush=True)
+                    time.sleep(2 * (tentative + 1))
+                    continue
             succes = True
             break
         except Exception as e:
-            if tentative < 2:
-                print(f"resolve_share tentative {tentative+1}/3: {e}", flush=True)
-                time.sleep(2)
-            else:
-                print(f"resolve_share échec définitif: {e}", flush=True)
-                return share_code, []
+            derniere_erreur = str(e)[:120]
+            print(f"resolve_share tentative {tentative+1}/3: {e}", flush=True)
+            time.sleep(2 * (tentative + 1))
+    if not succes:
+        raise RuntimeError(
+            f"Lien Frame.io injoignable après 3 essais ({derniere_erreur or 'échec réseau'}). "
+            "Astuce : ouvrez le lien dans votre navigateur, cliquez sur la vidéo, "
+            "puis collez l'URL complète (elle contient /view/...)."
+        )
     if not succes:
         return share_code, []
     share_id = captured[0]
@@ -231,8 +235,11 @@ REGLES_PAR_PIPELINE = {
     'video': ['00_LIRE_EN_PREMIER.md', 'REGLES_COMMUNES.md', 'REGLES_VIDEO.md'],
 }
 
+def normaliser_pipeline(type_job):
+    return 'video' if type_job == 'motion' else type_job
+
 def lire_regles(pipeline):
-    """Charge le paquet de règles du pipeline (dossier regles du déploiement)."""
+    """Charge le paquet de règles du pipeline (miroirs locaux du Drive)."""
     pipeline = normaliser_pipeline(pipeline)
     fichiers = REGLES_PAR_PIPELINE.get(pipeline, REGLES_PAR_PIPELINE['video'])
     regles = {}
@@ -249,11 +256,11 @@ def transcrire(video_path, wav_path):
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(video_path),
                     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
                     str(wav_path)], check=True, timeout=300)
-    venv_py = sys.executable
+    venv_py = QC / 'venv' / 'bin' / 'python'
     script = f"""
 import json, numpy as np, soundfile as sf
 from faster_whisper import WhisperModel
-model = WhisperModel(WHISPER_MODEL, device='cpu', compute_type='int8')
+model = WhisperModel('{QC}/models/fw-small', device='cpu', compute_type='int8')
 audio, sr = sf.read('{wav_path}')
 segments, info = model.transcribe(audio, language='fr', beam_size=5)
 segs = [{{'start': s.start, 'end': s.end, 'text': s.text.strip()}} for s in segments]
@@ -385,7 +392,7 @@ def traiter_job(job):
     (QUEUE / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False, indent=2))
 
     regles = lire_regles(job['type'])
-    workdir = BASE / 'work' / jid
+    workdir = QC / 'web' / 'work' / jid
     workdir.mkdir(parents=True, exist_ok=True)
 
     # Résoudre le lien Frame.io -> les assets réellement partagés
@@ -583,7 +590,7 @@ def reprendre_jobs_abandonnes():
 
 def main():
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (BASE / 'work').mkdir(parents=True, exist_ok=True)
+    (QC / 'web' / 'work').mkdir(parents=True, exist_ok=True)
     reprendre_jobs_abandonnes()
     print(f"Worker QC démarré (lourd×{MAX_LOURD_PARALLELE}, léger×{MAX_LEGER_PARALLELE}).",
           flush=True)
