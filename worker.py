@@ -253,27 +253,18 @@ def post_comment(file_id, seconds, text, fps=30):
     ts = int(seconds * fps)
     code, data = api('POST', f'/v4/accounts/{ACCT}/files/{file_id}/comments',
                      {"data": {"text": text, "timestamp": ts}})
-    if code not in (200, 201):
-        return False
-    # F-012 : un 2xx ne prouve pas la persistance — vérifier via GET
-    # (éventuelle latence d'indexation : 3 tentatives espacées).
-    cid = (data.get('data') or {}).get('id') if isinstance(data, dict) else None
-    if not cid:
-        return True
-    for _ in range(3):
-        time.sleep(2)
-        code2, data2 = api('GET', f'/v4/accounts/{ACCT}/files/{file_id}/comments')
-        if code2 == 200 and isinstance(data2, dict):
-            ids = []
-            for c in data2.get('data', []):
-                d = (c.get('data', c) or {}) if isinstance(c, dict) else {}
-                if isinstance(d, dict) and d.get('id'):
-                    ids.append(d['id'])
-            if cid in ids:
-                return True
-    print(f"post_comment : commentaire {cid} introuvable après POST "
-          f"(file {file_id})", flush=True)
-    return False
+    return code in (200, 201)
+
+def compter_commentaires(fid):
+    """Nombre de commentaires persistés sur Frame.io (F-012 : la source de
+    vérité est GET /comments, pas le compteur du worker). None si injoignable."""
+    try:
+        c, d = api('GET', f'/v4/accounts/{ACCT}/files/{fid}/comments')
+        if c == 200 and isinstance(d, dict):
+            return len(d.get('data', []))
+    except Exception:
+        pass
+    return None
 
 # --- Règles (factory v3 : un paquet par pipeline) ---
 # DESIGN -> REGLES_COMMUNES + REGLES_DESIGN
@@ -367,22 +358,22 @@ def commentaire_faute(sec, faute, correction):
         return (sec, f"{tc} — Corriger '{faute}' en '{correction}'.")
     return (sec, f"{tc} — '{faute}' : à vérifier.")
 
-def verifier_transcription_linguistique(tr):
-    """V-04/SUB-005 : l'écrit doit être impeccable même si l'oral a des fautes."""
-    commentaires, vus = [], set()
-    for seg in tr.get('segments', []):
-        texte = (seg.get('text') or '').strip()
-        if len(texte) < 3:
-            continue
-        sec = seg.get('start', 0) or 0
-        for f in verifier_texte_languagetool(texte, 'fr'):
-            cle = (f['faute'].lower(), f['correction'].lower())
-            if cle in vus:
-                continue
-            vus.add(cle)
-            commentaires.append(commentaire_faute(sec, f['faute'], f['correction']))
-            time.sleep(0.5)  # ménager l'API LanguageTool
-    return commentaires
+def texte_ecran_valide(texte):
+    """Filtre anti-bruit OCR (V-02) : le texte doit ressembler à du vrai
+    texte affiché, pas à un fragment de logo ou de décor."""
+    t = (texte or '').strip()
+    if len(t) < 12:
+        return False
+    mots = t.split()
+    if len(mots) < 3:
+        return False
+    lettres = sum(1 for c in t if c.isalpha() or c in " '’«»")
+    if lettres / len(t) < 0.7:
+        return False
+    tl = t.lower()
+    if tl.startswith(('http', 'www.')) or t.replace(' ', '').isdigit():
+        return False
+    return True
 
 def extraire_textes_ecran(video_path, workdir):
     """V-02/SUB-001 : 1 capture/seconde + OCR tesseract (fra+eng).
@@ -413,18 +404,6 @@ def extraire_textes_ecran(video_path, workdir):
         if len(texte) >= 4 and not texte.lower().startswith(('http', 'www.')):
             resultats.append((sec, texte))
     return resultats
-
-def verifier_textes_ecran(ocr_resultats):
-    """V-03/V-04 : règles LANG appliquées aux textes incrustés."""
-    commentaires, vus = [], set()
-    for sec, texte in ocr_resultats:
-        if texte in vus:
-            continue
-        vus.add(texte)
-        for f in verifier_texte_languagetool(texte, 'fr'):
-            commentaires.append(commentaire_faute(sec, f['faute'], f['correction']))
-            time.sleep(0.5)
-    return commentaires
 
 # --- Progression ---
 def maj_progression(jid, phase=None, fichiers_faits=None, fichiers_total=None,
@@ -508,9 +487,6 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
             result['note'] = f"Transcription: {len(tr['segments'])} segments. Analyse détaillée dans le rapport."
             (workdir / f"{fid}-transcription.json").write_text(
                 json.dumps(tr, ensure_ascii=False, indent=1))
-            # --- Vérification linguistique de la transcription (V-04/SUB-005) ---
-            for sec, txt in verifier_transcription_linguistique(tr):
-                result['commentaires'].append({'timestamp': sec, 'text': txt})
         except Exception as e:
             result['erreurs'].append(f'Transcription: {e}')
         etape('analyse')
@@ -527,14 +503,48 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
                 result['commentaires'].append({'timestamp': sec, 'text': txt})
         except Exception as e:
             result['erreurs'].append(f'Contrôle technique: {e}')
-        # --- OCR des textes à l'écran (V-02/V-03) + vérification LANG ---
+        # --- Vérification linguistique unifiée (V-04/SUB-005, LANG-003..007) ---
+        # Transcription (phrases réelles -> fiables) + OCR écran (filtré
+        # anti-bruit). Déduplication globale, max 10 commentaires/fichier ;
+        # le reste est consigné dans le rapport.
         try:
+            vus = set()
+            corrections = []  # [(sec, faute, correction)]
+            if tr:
+                for seg in tr.get('segments', []):
+                    texte = (seg.get('text') or '').strip()
+                    if len(texte) < 3:
+                        continue
+                    sec = seg.get('start', 0) or 0
+                    for f in verifier_texte_languagetool(texte, 'fr'):
+                        cle = (f['faute'].lower(), f['correction'].lower())
+                        if cle not in vus:
+                            vus.add(cle)
+                            corrections.append((sec, f['faute'], f['correction']))
+                    time.sleep(0.3)
             ocr = extraire_textes_ecran(local, workdir)
             result['textes_ecran'] = [{'sec': s, 'texte': t} for s, t in ocr]
-            for sec, txt in verifier_textes_ecran(ocr):
-                result['commentaires'].append({'timestamp': sec, 'text': txt})
+            for sec, texte in ocr:
+                if not texte_ecran_valide(texte):
+                    continue
+                for f in verifier_texte_languagetool(texte, 'fr'):
+                    cle = (f['faute'].lower(), f['correction'].lower())
+                    if cle not in vus:
+                        vus.add(cle)
+                        corrections.append((sec, f['faute'], f['correction']))
+                time.sleep(0.3)
+            result['corrections_texte'] = [
+                {'sec': s, 'faute': fa, 'correction': co}
+                for s, fa, co in corrections]
+            for sec, fa, co in corrections[:10]:
+                s_, txt = commentaire_faute(sec, fa, co)
+                result['commentaires'].append({'timestamp': s_, 'text': txt})
+            if len(corrections) > 10:
+                result['note'] = (result.get('note', '') +
+                    f" {len(corrections) - 10} correction(s) linguistique(s) "
+                    f"supplémentaire(s) dans le rapport.")
         except Exception as e:
-            result['erreurs'].append(f'OCR: {e}')
+            result['erreurs'].append(f'Verif linguistique: {e}')
     else:
         etape('analyse')
         try:
@@ -648,6 +658,9 @@ def traiter_job(job):
             maj_progression(jid, phase='publication', fichiers_faits=i,
                             fichiers_total=len(files),
                             fichier_courant=fi.get('name', ''))
+            # F-012 : la source de vérité est GET /comments — compter
+            # avant/après pour détecter un écart de persistance.
+            avant = compter_commentaires(fi['id'])
             publies = 0
             for c in fr.get('commentaires', []):
                 sec = c.get('timestamp', 0) if isinstance(c, dict) else 0
@@ -661,6 +674,11 @@ def traiter_job(job):
                     fr.setdefault('commentaires_echecs', []).append(
                         f"{txt[:60]}: {e}"[:100])
                 time.sleep(1)  # éviter le rate-limit
+            apres = compter_commentaires(fi['id'])
+            if avant is not None and apres is not None and (apres - avant) != publies:
+                fr.setdefault('erreurs', []).append(
+                    f"Écart persistance commentaires : {publies} envoyé(s), "
+                    f"{apres - avant} retrouvé(s) sur Frame.io.")
             fr['commentaires_publies_reel'] = publies
             resultat['fichiers'].append(fr)
             resultat['fichiers_traites'] += 1
