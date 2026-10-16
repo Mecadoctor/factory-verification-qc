@@ -394,6 +394,18 @@ def segment_transcription_valide(texte):
         return False
     return True
 
+def faute_valide(faute, correction):
+    """Une correction n'est publiée/rapportée que si elle est assez
+    substantielle pour ne pas être un fragment de bruit (OCR/Whisper).
+    Les cas sans suggestion vont au rapport uniquement via 'à vérifier'."""
+    f = (faute or '').strip()
+    if not (correction or '').strip():
+        return False
+    # La faute doit contenir au moins 3 lettres consécutives
+    if not re.search(r'[A-Za-zÀ-ÿ]{3,}', f):
+        return False
+    return True
+
 def extraire_textes_ecran(video_path, workdir):
     """V-02/SUB-001 : 1 capture/seconde + OCR tesseract (fra+eng).
     Retourne [(sec, texte)] — un seul par texte distinct consécutif."""
@@ -536,6 +548,8 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
                         continue
                     sec = seg.get('start', 0) or 0
                     for f in verifier_texte_languagetool(texte, 'fr'):
+                        if not faute_valide(f['faute'], f['correction']):
+                            continue
                         cle = (f['faute'].lower(), f['correction'].lower())
                         if cle not in vus:
                             vus.add(cle)
@@ -547,6 +561,8 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
                 if not texte_ecran_valide(texte):
                     continue
                 for f in verifier_texte_languagetool(texte, 'fr'):
+                    if not faute_valide(f['faute'], f['correction']):
+                        continue
                     cle = (f['faute'].lower(), f['correction'].lower())
                     if cle not in vus:
                         vus.add(cle)
@@ -584,10 +600,11 @@ def traiter_fichier(job, file_info, workdir, regles, jid=None, idx=0, total=1):
             texte = ' '.join(p.stdout.split())
             result['texte_detecte'] = texte
             for f in verifier_texte_languagetool(texte, 'fr'):
+                if not faute_valide(f['faute'], f['correction']):
+                    continue
                 result['commentaires'].append(
                     {'timestamp': 0,
-                     'text': f"Corriger '{f['faute']}' en '{f['correction']}'."
-                             if f['correction'] else f"'{f['faute']}' : à vérifier."})
+                     'text': f"Corriger '{f['faute']}' en '{f['correction']}'."})
                 time.sleep(0.5)
         except Exception as e:
             result['erreurs'].append(f'OCR design: {e}')
